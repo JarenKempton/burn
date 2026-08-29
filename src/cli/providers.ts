@@ -93,6 +93,12 @@ async function add(name: string | undefined): Promise<void> {
       console.log("✓ Nothing to configure — usage and rate limits are read automatically");
       console.log("  from your Codex sessions. No credentials are stored.");
       break;
+    case "cursor":
+      console.log("✓ Nothing to configure — reuses your existing cursor-agent login to read");
+      console.log("  per-request usage from Cursor's dashboard service.");
+      console.log("  Heads up: this is Cursor's internal API (no stability promise), and on");
+      console.log("  self-serve plans Cursor hides costs — tokens are always collected.");
+      break;
     case "openrouter": {
       // Decision (issue #1 thread): management key only. OpenRouter's OAuth
       // PKCE yields a regular key that cannot read /credits or /activity.

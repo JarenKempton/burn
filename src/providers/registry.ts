@@ -4,10 +4,12 @@ import { claudeCodeAdapter } from "./claude-code";
 import { codexAdapter } from "./codex";
 import { openRouterAdapter } from "./openrouter";
 import { lmStudioAdapter } from "./lmstudio";
+import { cursorAdapter } from "./cursor";
 
 export const ALL_ADAPTERS: Adapter[] = [
   claudeCodeAdapter,
   codexAdapter,
+  cursorAdapter,
   openRouterAdapter,
   lmStudioAdapter,
 ];

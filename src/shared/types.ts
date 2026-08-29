@@ -6,7 +6,7 @@ export const OBSERVATION_SCHEMA_VERSION = 1;
 export const API_VERSION = "v1";
 export const PROTOCOL_VERSION = 1;
 
-export type ProviderId = "claude_code" | "codex" | "openrouter" | "lmstudio";
+export type ProviderId = "claude_code" | "codex" | "openrouter" | "lmstudio" | "cursor";
 
 export type SourceQuality =
   | "official_api"
