@@ -23,10 +23,10 @@ function buildCtx(providerId: ProviderId, opts?: { ephemeral?: boolean }): Adapt
   };
 }
 
+// Bun's global prompt() reads one line synchronously; unlike iterating the
+// `console` async iterator, it works for any number of sequential questions.
 async function prompt(question: string): Promise<string> {
-  process.stdout.write(question);
-  for await (const line of console) return line.trim();
-  return "";
+  return (globalThis.prompt(question.trimEnd()) ?? "").trim();
 }
 
 export async function cmdProviders(sub: string | undefined, rest: string[]): Promise<void> {
