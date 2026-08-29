@@ -1,0 +1,159 @@
+{
+  "comment": "Example observation envelopes per provider — fake values, no secrets or prompt content. These shapes are accepted verbatim by POST /v1/observations (after node_id is replaced with the authenticated node).",
+  "claude_code_consumption": {
+    "schema_version": 1,
+    "observation_id": "01920000-0000-7000-8000-000000000001",
+    "node_id": "NODE",
+    "provider_id": "claude_code",
+    "observed_at": "2026-08-28T04:08:19.016Z",
+    "collected_at": "2026-08-28T04:10:00.000Z",
+    "adapter_id": "claude_code.local_jsonl",
+    "adapter_version": "0.1.0",
+    "source_quality": "local_log",
+    "payload": {
+      "type": "consumption",
+      "period_start": "2026-08-28T03:33:31.310Z",
+      "period_end": "2026-08-28T04:08:19.016Z",
+      "model": "claude-fable-5",
+      "input_tokens": 20078,
+      "cached_input_tokens": 5310022,
+      "output_tokens": 118443,
+      "requests": 212,
+      "counting": "local_log"
+    }
+  },
+  "claude_code_quota": {
+    "schema_version": 1,
+    "observation_id": "01920000-0000-7000-8000-000000000002",
+    "node_id": "NODE",
+    "provider_id": "claude_code",
+    "observed_at": "2026-08-28T04:10:00.000Z",
+    "collected_at": "2026-08-28T04:10:00.000Z",
+    "adapter_id": "claude_code.local_jsonl",
+    "adapter_version": "0.1.0",
+    "source_quality": "official_cli",
+    "payload": {
+      "type": "quota_snapshot",
+      "window": { "kind": "rolling", "label": "5h", "duration_seconds": 18000 },
+      "used_percent": 37,
+      "resets_at": "2026-08-28T07:00:00.000Z"
+    }
+  },
+  "codex_quota": {
+    "schema_version": 1,
+    "observation_id": "01920000-0000-7000-8000-000000000003",
+    "node_id": "NODE",
+    "provider_id": "codex",
+    "observed_at": "2026-08-28T16:53:37.845Z",
+    "collected_at": "2026-08-28T17:00:00.000Z",
+    "adapter_id": "codex.session_rollout",
+    "adapter_version": "0.1.0",
+    "source_quality": "local_log",
+    "payload": {
+      "type": "quota_snapshot",
+      "window": { "kind": "rolling", "label": "weekly", "duration_seconds": 604800 },
+      "used_percent": 96,
+      "resets_at": "2026-09-03T16:24:47.000Z"
+    }
+  },
+  "codex_consumption": {
+    "schema_version": 1,
+    "observation_id": "01920000-0000-7000-8000-000000000004",
+    "node_id": "NODE",
+    "provider_id": "codex",
+    "observed_at": "2026-08-28T16:53:37.845Z",
+    "collected_at": "2026-08-28T17:00:00.000Z",
+    "adapter_id": "codex.session_rollout",
+    "adapter_version": "0.1.0",
+    "source_quality": "local_log",
+    "payload": {
+      "type": "consumption",
+      "period_start": "2026-08-28T16:39:27.772Z",
+      "period_end": "2026-08-28T16:53:37.845Z",
+      "input_tokens": 9081255,
+      "cached_input_tokens": 8714496,
+      "output_tokens": 92311,
+      "reasoning_output_tokens": 40960,
+      "requests": 41,
+      "counting": "local_log"
+    }
+  },
+  "openrouter_credit_balance": {
+    "schema_version": 1,
+    "observation_id": "01920000-0000-7000-8000-000000000005",
+    "node_id": "NODE",
+    "provider_id": "openrouter",
+    "observed_at": "2026-08-28T17:00:00.000Z",
+    "collected_at": "2026-08-28T17:00:00.000Z",
+    "adapter_id": "openrouter.rest",
+    "adapter_version": "0.1.0",
+    "source_quality": "official_api",
+    "payload": {
+      "type": "credit_balance",
+      "total_purchased_micros": 50000000,
+      "total_used_micros": 12345678,
+      "remaining_micros": 37654322,
+      "currency": "USD"
+    }
+  },
+  "openrouter_consumption": {
+    "schema_version": 1,
+    "observation_id": "8f1f3c2a-1b2c-4d5e-8f90-abcdef123456",
+    "node_id": "NODE",
+    "provider_id": "openrouter",
+    "observed_at": "2026-08-27T23:59:59Z",
+    "collected_at": "2026-08-28T17:00:00.000Z",
+    "adapter_id": "openrouter.rest",
+    "adapter_version": "0.1.0",
+    "source_quality": "official_api",
+    "payload": {
+      "type": "consumption",
+      "period_start": "2026-08-27T00:00:00Z",
+      "period_end": "2026-08-27T23:59:59Z",
+      "model": "anthropic/claude-sonnet-5",
+      "input_tokens": 150000,
+      "output_tokens": 32000,
+      "reasoning_output_tokens": 8000,
+      "requests": 42,
+      "cost_micros": 1250000,
+      "currency": "USD",
+      "counting": "provider_reported"
+    }
+  },
+  "lmstudio_inference_performance": {
+    "schema_version": 1,
+    "observation_id": "01920000-0000-7000-8000-000000000006",
+    "node_id": "NODE",
+    "provider_id": "lmstudio",
+    "observed_at": "2026-08-28T17:05:00.000Z",
+    "collected_at": "2026-08-28T17:05:01.000Z",
+    "adapter_id": "lmstudio.log_stream",
+    "adapter_version": "0.1.0",
+    "source_quality": "official_cli",
+    "payload": {
+      "type": "inference_performance",
+      "model": "qwen3-30b-a3b",
+      "time_to_first_token_ms": 412,
+      "tokens_per_second": 38.5,
+      "duration_ms": 9120,
+      "input_tokens": 1024,
+      "output_tokens": 350
+    }
+  },
+  "adapter_status": {
+    "schema_version": 1,
+    "observation_id": "01920000-0000-7000-8000-000000000007",
+    "node_id": "NODE",
+    "provider_id": "openrouter",
+    "observed_at": "2026-08-28T17:00:00.000Z",
+    "collected_at": "2026-08-28T17:00:00.000Z",
+    "adapter_id": "openrouter.rest",
+    "adapter_version": "0.1.0",
+    "source_quality": "official_api",
+    "payload": {
+      "type": "adapter_status",
+      "status": "authentication_required",
+      "message": "OpenRouter key rejected (401) — re-run: burn providers add openrouter"
+    }
+  }
+}
