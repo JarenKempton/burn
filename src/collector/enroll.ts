@@ -2,7 +2,7 @@ import { hostname } from "node:os";
 import { BurnClient } from "./client";
 import { loadCredentials, saveCredentials } from "../shared/config";
 
-const AGENT_VERSION = "0.1.0";
+const COLLECTOR_VERSION = "0.1.0";
 
 function tryOpenBrowser(url: string): void {
   const cmd = process.platform === "darwin" ? "open" : "xdg-open";
@@ -29,7 +29,7 @@ export async function enroll(serverUrl: string): Promise<void> {
   const created = await client.createEnrollment({
     node_name: hostname(),
     platform: `${process.platform}/${process.arch}`,
-    agent_version: AGENT_VERSION,
+    collector_version: COLLECTOR_VERSION,
   });
 
   console.log("");
@@ -54,7 +54,7 @@ export async function enroll(serverUrl: string): Promise<void> {
       saveCredentials(creds);
       console.log(`✅ Enrolled as node ${issued.node_id}`);
       console.log(`   Server: ${issued.canonical_url}`);
-      console.log(`   Start reporting with: burn agent run`);
+      console.log(`   Start reporting with: burn collector run`);
       return;
     }
     if (status === "denied") throw new Error("Enrollment was denied by the administrator");

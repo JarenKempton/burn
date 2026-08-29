@@ -7,7 +7,7 @@ import type { ConsumptionPayload, ObservationEnvelope, QuotaSnapshotPayload } fr
 import { newId, nowIso } from "../shared/util";
 import { readNewRegion, commitRegion } from "./jsonl";
 import { stateDir } from "../shared/paths";
-import { getCursor, setCursor } from "../agent/db";
+import { getCursor, setCursor } from "../collector/db";
 
 // Claude Code adapter (research: docs/research/issue-3-claude-code.md).
 //

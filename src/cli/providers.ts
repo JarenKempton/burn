@@ -1,7 +1,10 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { loadConfig, saveConfig, loadCredentials, saveCredentials } from "../shared/config";
-import { ALL_ADAPTERS, adapterFor } from "../providers/registry";
+import { ALL_ADAPTERS, adapterFor, isEnabled } from "../providers/registry";
 import type { AdapterContext } from "../providers/types";
-import { openAgentDb } from "../agent/db";
+import { openCollectorDb } from "../collector/db";
 import { RATELIMIT_STATE_FILE } from "../providers/claude-code";
 import { stopLmStudioStream } from "../providers/lmstudio";
 import type { ProviderId } from "../shared/types";
@@ -12,8 +15,8 @@ function buildCtx(providerId: ProviderId, opts?: { ephemeral?: boolean }): Adapt
   return {
     nodeId: creds.node?.node_id ?? "unenrolled",
     // ephemeral: an in-memory db so `providers test` never advances the real
-    // collection cursors (the agent must still see everything later)
-    db: openAgentDb(opts?.ephemeral ? ":memory:" : undefined),
+    // collection cursors (the collector must still see everything later)
+    db: openCollectorDb(opts?.ephemeral ? ":memory:" : undefined),
     settings: cfg.providers?.[providerId]?.settings ?? {},
     credentials: creds.providers?.[providerId] ?? {},
   };
@@ -39,9 +42,10 @@ async function list(): Promise<void> {
     const ctx = buildCtx(adapter.providerId);
     const detected = await adapter.detect(ctx).catch(() => false);
     ctx.db.close();
-    const enabled = cfg.providers?.[adapter.providerId]?.enabled !== false;
+    const enabled = isEnabled(cfg, adapter.providerId);
+    const note = enabled ? "" : " (off — enable with: burn providers add " + adapter.providerId + ")";
     console.log(
-      `${detected ? "●" : "○"} ${adapter.providerId.padEnd(12)} ${detected ? "detected" : "not detected"}${enabled ? "" : " (disabled)"}  [${adapter.adapterId}]`
+      `${detected ? "●" : "○"} ${adapter.providerId.padEnd(12)} ${detected ? "detected" : "not detected"}${note}  [${adapter.adapterId}]`
     );
   }
 }
@@ -68,9 +72,9 @@ async function add(name: string | undefined): Promise<void> {
     case "claude_code": {
       // Reuses the existing installation read-only; quota needs the statusline tee.
       console.log("Claude Code consumption is read from local session logs automatically.");
-      console.log("For 5h/weekly quota windows, set Burn as your Claude Code statusline:");
-      console.log(`  in ~/.claude/settings.json:  "statusLine": {"type": "command", "command": "burn claude-statusline"}`);
-      console.log(`Rate limits will be captured to ${RATELIMIT_STATE_FILE()} as you use Claude Code.`);
+      console.log("5h/weekly quota windows use Claude Code's official statusline JSON;");
+      console.log("Burn can register itself as your statusline command to capture them.");
+      await offerStatuslineInstall();
       break;
     }
     case "codex":
@@ -78,9 +82,13 @@ async function add(name: string | undefined): Promise<void> {
       console.log("No credentials are required or stored.");
       break;
     case "openrouter": {
-      console.log("OpenRouter needs an API key. A MANAGEMENT key (openrouter.ai/settings/management-keys)");
-      console.log("unlocks credits + daily activity; a regular key only reports per-key limits.");
-      const key = await prompt("Paste key (input hidden is not supported; key is stored 0600 locally): ");
+      // Decision (issue #1 thread): management key only. OpenRouter's OAuth
+      // PKCE yields a regular key that cannot read /credits or /activity.
+      console.log("OpenRouter needs a MANAGEMENT key — create one at:");
+      console.log("  https://openrouter.ai/settings/management-keys");
+      console.log("(OAuth login can't work here: it issues a regular key, and OpenRouter");
+      console.log(" locks the credits and activity endpoints to management keys.)");
+      const key = await prompt("Paste management key (stored locally, mode 0600, never sent to the Burn server): ");
       if (!key) {
         console.error("No key provided; aborting.");
         process.exit(1);
@@ -92,15 +100,64 @@ async function add(name: string | undefined): Promise<void> {
       break;
     }
     case "lmstudio": {
+      console.log("Note: LM Studio support is early and off by default — it has no history");
+      console.log("API, so usage is only captured while the collector is running.");
       const url = await prompt("LM Studio base URL [http://127.0.0.1:1234]: ");
       cfg.providers[providerId]!.settings = { base_url: url || "http://127.0.0.1:1234" };
-      console.log("Note: LM Studio has no history API — usage is only captured while the agent runs.");
       break;
     }
   }
 
   saveConfig(cfg);
   console.log(`✅ ${providerId} configured. Verify with: burn providers test ${providerId}`);
+}
+
+/**
+ * Offer to register Burn as the Claude Code statusline command in
+ * ~/.claude/settings.json. The statusline is the officially documented
+ * delivery surface for rate-limit data; this keeps onboarding to the same
+ * "run one command, answer prompts" shape as every other provider.
+ */
+async function offerStatuslineInstall(): Promise<void> {
+  const settingsPath = join(homedir(), ".claude", "settings.json");
+  let settings: Record<string, any> = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+    } catch {
+      console.log(`⚠️  ${settingsPath} is not valid JSON — not touching it. Configure the statusline manually.`);
+      return;
+    }
+  }
+
+  // Invoke burn the same way it is running right now, so the written command
+  // works for both the compiled binary and source checkouts.
+  const command = process.execPath.endsWith("/bun")
+    ? `${process.execPath} run ${join(process.cwd(), "src/index.ts")} claude-statusline`
+    : `${process.execPath} claude-statusline`;
+
+  const current = settings["statusLine"];
+  if (current?.command?.includes("claude-statusline")) {
+    console.log("✓ Burn is already your Claude Code statusline.");
+    return;
+  }
+  if (current) {
+    console.log(`You already have a statusline configured: ${JSON.stringify(current)}`);
+    console.log("Not replacing it. To capture quota, chain Burn into your existing script:");
+    console.log(`  your script should also pipe its stdin JSON to: ${command}`);
+    return;
+  }
+
+  const answer = await prompt(`Write statusline into ${settingsPath}? [Y/n] `);
+  if (answer.toLowerCase() === "n") {
+    console.log("Skipped. Add it later with:");
+    console.log(`  "statusLine": {"type": "command", "command": ${JSON.stringify(command)}}`);
+    return;
+  }
+  settings["statusLine"] = { type: "command", command };
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+  console.log(`✓ Statusline installed. Quota windows will be captured to`);
+  console.log(`  ${RATELIMIT_STATE_FILE()} as you use Claude Code.`);
 }
 
 async function test(name: string | undefined): Promise<void> {

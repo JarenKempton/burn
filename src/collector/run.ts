@@ -1,6 +1,6 @@
 import { BurnClient } from "./client";
 import {
-  openAgentDb,
+  openCollectorDb,
   enqueue,
   peekBatch,
   ack,
@@ -16,17 +16,17 @@ import { stopLmStudioStream } from "../providers/lmstudio";
 import type { AdapterContext } from "../providers/types";
 import type { ObservationEnvelope } from "../shared/types";
 
-const AGENT_VERSION = "0.1.0";
+const COLLECTOR_VERSION = "0.1.0";
 
-export async function runAgent(opts?: { once?: boolean }): Promise<void> {
+export async function runCollector(opts?: { once?: boolean }): Promise<void> {
   const creds = loadCredentials();
   if (!creds.node) {
     console.error("This node is not enrolled. Run: burn enroll [server-url]");
     process.exit(1);
   }
   const cfg = loadConfig();
-  const client = new BurnClient(cfg.agent?.server_url ?? creds.node.server_url, creds.node.node_token);
-  const db = openAgentDb();
+  const client = new BurnClient(cfg.collector?.server_url ?? creds.node.server_url, creds.node.node_token);
+  const db = openCollectorDb();
   const nodeId = creds.node.node_id;
 
   const bootId = newId();
@@ -35,15 +35,15 @@ export async function runAgent(opts?: { once?: boolean }): Promise<void> {
     ? { boot_id: previousUnclean, termination: "unclean_or_unknown" as const }
     : null;
 
-  const heartbeatSeconds = cfg.agent?.heartbeat_interval_seconds ?? DEFAULT_HEARTBEAT_SECONDS;
-  const collectSeconds = cfg.agent?.collect_interval_seconds ?? DEFAULT_COLLECT_SECONDS;
+  const heartbeatSeconds = cfg.collector?.heartbeat_interval_seconds ?? DEFAULT_HEARTBEAT_SECONDS;
+  const collectSeconds = cfg.collector?.collect_interval_seconds ?? DEFAULT_COLLECT_SECONDS;
 
   const heartbeat = async () => {
     try {
       await client.heartbeat({
         sent_at: nowIso(),
         boot_id: bootId,
-        agent_version: AGENT_VERSION,
+        collector_version: COLLECTOR_VERSION,
         previous_session: previousSession,
       });
       previousSession = null; // report prior unclean termination once
@@ -112,7 +112,7 @@ export async function runAgent(opts?: { once?: boolean }): Promise<void> {
   }
 
   console.log(
-    `burn agent running (node ${nodeId}); heartbeat ${heartbeatSeconds}s, collect ${collectSeconds}s`
+    `burn collector running (node ${nodeId}); heartbeat ${heartbeatSeconds}s, collect ${collectSeconds}s`
   );
   const hbTimer = setInterval(heartbeat, heartbeatSeconds * 1000);
   const collectTimer = setInterval(cycle, collectSeconds * 1000);
@@ -122,7 +122,7 @@ export async function runAgent(opts?: { once?: boolean }): Promise<void> {
     clearInterval(collectTimer);
     stopLmStudioStream();
     endSession(db, bootId);
-    console.log("burn agent stopped");
+    console.log("burn collector stopped");
     process.exit(0);
   };
   process.on("SIGINT", shutdown);

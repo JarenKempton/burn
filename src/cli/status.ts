@@ -1,8 +1,8 @@
 import { loadConfig, loadCredentials } from "../shared/config";
-import { openAgentDb, outboxDepth } from "../agent/db";
+import { openCollectorDb, outboxDepth } from "../collector/db";
 
 // `burn status` — node, quota, and usage at a glance. Talks to the server
-// with the admin token when available locally, else shows local agent state.
+// with the admin token when available locally, else shows local collector state.
 
 export async function cmdStatus(): Promise<void> {
   const creds = loadCredentials();
@@ -14,7 +14,7 @@ export async function cmdStatus(): Promise<void> {
   }
   console.log(`Node:    ${creds.node.node_id}`);
   console.log(`Server:  ${creds.node.server_url}`);
-  const db = openAgentDb();
+  const db = openCollectorDb();
   console.log(`Outbox:  ${outboxDepth(db)} observation(s) pending delivery`);
   db.close();
 
@@ -24,7 +24,7 @@ export async function cmdStatus(): Promise<void> {
     return;
   }
 
-  const base = cfg.agent?.server_url ?? creds.node.server_url;
+  const base = cfg.collector?.server_url ?? creds.node.server_url;
   const get = async (path: string) => {
     const res = await fetch(`${base}${path}`, { headers: { authorization: `Bearer ${adminToken}` } });
     if (!res.ok) throw new Error(`GET ${path}: HTTP ${res.status}`);

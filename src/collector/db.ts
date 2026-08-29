@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { agentDbPath } from "../shared/paths";
+import { collectorDbPath } from "../shared/paths";
 import type { ObservationEnvelope } from "../shared/types";
 import { nowIso } from "../shared/util";
 
@@ -39,7 +39,7 @@ const MIGRATIONS: string[] = [
   `,
 ];
 
-export function openAgentDb(path = agentDbPath()): Database {
+export function openCollectorDb(path = collectorDbPath()): Database {
   const db = new Database(path, { create: true });
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec(

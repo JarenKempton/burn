@@ -8,7 +8,7 @@ import type { ObservationEnvelope, ProviderId } from "../shared/types";
 
 export interface AdapterContext {
   nodeId: string;
-  /** agent-local db for incremental cursors; adapters use getCursor/setCursor */
+  /** collector-local db for incremental cursors; adapters use getCursor/setCursor */
   db: Database;
   settings: Record<string, unknown>;
   credentials: Record<string, string>;

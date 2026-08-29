@@ -13,10 +13,26 @@ authoritative in-repo sources; the TypeScript types are the wire schema
 | CLI commands/flags/output | `src/index.ts` (help text) + `src/cli/*` |
 | Wire schemas (observations, enrollment, heartbeat, errors) | `src/shared/types.ts` |
 | Server SQLite migrations | `src/server/db.ts` (`MIGRATIONS`) |
-| Client SQLite migrations (identity/outbox/sessions/cursors) | `src/agent/db.ts` (`MIGRATIONS`) |
+| Client SQLite migrations (identity/outbox/sessions/cursors) | `src/collector/db.ts` (`MIGRATIONS`) |
 | Config schema + file locations | `src/shared/config.ts`, `src/shared/paths.ts` |
 | Example payload fixtures | `docs/fixtures/*.json` |
 | Provider research findings | `docs/research/issue-{2,3,5,6}-*.md` |
+
+## Post-v0 review decisions (2026-08-28)
+
+- The collecting role is named **collector** (`burn collector run`), not
+  "agent" — no confusion with LLM agents. The enrolled machine remains a
+  "node" in the data model.
+- The HTTP server is built on **Hono** over `Bun.serve`.
+- **Claude Code quota** uses the officially documented statusline surface
+  only; `burn providers add claude_code` offers to register the statusline
+  command automatically. The undocumented OAuth usage endpoint stays out.
+- **OpenRouter onboarding is management-key only.** OAuth PKCE issues a
+  regular key, and OpenRouter restricts `/credits` and `/activity` to
+  management keys, so OAuth cannot power the core collection.
+- **LM Studio is opt-in** (off unless `burn providers add lmstudio` is run) —
+  it has no history surface, so it is deferred as an early/experimental
+  adapter.
 
 ## Versioning
 
@@ -113,7 +129,7 @@ be re-normalized later without ever having entered query columns.
 | --- | --- | --- |
 | config | `$XDG_CONFIG_HOME/burn/config.json` | `~/Library/Application Support/burn/config.json` |
 | credentials | `$XDG_CONFIG_HOME/burn/credentials.json` (0600) | same dir as config |
-| state (SQLite) | `$XDG_STATE_HOME/burn/{server,agent}.sqlite` | `~/Library/Application Support/burn/state/` |
+| state (SQLite) | `$XDG_STATE_HOME/burn/{server,collector}.sqlite` | `~/Library/Application Support/burn/state/` |
 | logs | `$XDG_STATE_HOME/burn/logs` | `~/Library/Logs/burn` |
 
 `BURN_CONFIG_DIR`, `BURN_STATE_DIR`, `BURN_LOG_DIR` override.

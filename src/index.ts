@@ -3,8 +3,8 @@
 // CLI contract per issue #7.
 
 import { startServer } from "./server/server";
-import { enroll } from "./agent/enroll";
-import { runAgent } from "./agent/run";
+import { enroll } from "./collector/enroll";
+import { runCollector } from "./collector/run";
 import { claudeStatuslineTee } from "./providers/claude-code";
 import { cmdStatus } from "./cli/status";
 import { cmdProviders } from "./cli/providers";
@@ -20,7 +20,7 @@ Usage:
   burn server install          Install the server as a user service (systemd/launchd)
   burn server run              Run the server in the foreground
   burn enroll [server-url]     Enroll this node with a Burn server (browser approval)
-  burn agent run [--once]      Run the collection agent
+  burn collector run [--once]  Run the collection process
   burn status                  Show node, quota, and usage status
   burn providers list          List providers and detection status
   burn providers add [name]    Configure a provider (interactive without name)
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
       break;
     }
     case "enroll": {
-      const url = sub ?? loadConfig().agent?.server_url;
+      const url = sub ?? loadConfig().collector?.server_url;
       if (!url) {
         // mDNS discovery is a follow-up; explicit URL is the supported path today.
         console.error("Usage: burn enroll <server-url>   (e.g. burn enroll http://server:7337)");
@@ -59,8 +59,8 @@ async function main(): Promise<void> {
       }
       return enroll(url);
     }
-    case "agent": {
-      if (sub === "run") return runAgent({ once: rest.includes("--once") });
+    case "collector": {
+      if (sub === "run") return runCollector({ once: rest.includes("--once") });
       break;
     }
     case "status":

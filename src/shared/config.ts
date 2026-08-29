@@ -18,7 +18,7 @@ export interface BurnConfig {
     lan?: boolean;
     heartbeat_interval_seconds?: number;
   };
-  agent?: {
+  collector?: {
     server_url?: string;
     collect_interval_seconds?: number;
     heartbeat_interval_seconds?: number;

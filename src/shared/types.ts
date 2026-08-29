@@ -136,7 +136,7 @@ export interface WellKnownBurn {
 export interface EnrollmentRequestCreate {
   node_name: string;
   platform: string;
-  agent_version: string;
+  collector_version: string;
 }
 
 export interface EnrollmentRequestCreated {
@@ -166,7 +166,7 @@ export interface EnrollmentTokenIssued {
 export interface HeartbeatRequest {
   sent_at: string;
   boot_id: string;
-  agent_version: string;
+  collector_version: string;
   /** best-effort report of how the previous session ended */
   previous_session?: { boot_id: string; termination: "clean" | "unclean_or_unknown" } | null;
 }

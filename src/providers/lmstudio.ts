@@ -9,7 +9,7 @@ import { newId, nowIso } from "../shared/util";
 // --json`: each llm.prediction.output event carries a typed stats object
 // (promptTokensCount, predictedTokensCount, tokensPerSecond,
 // timeToFirstTokenSec, ...). Events also carry completion text, which is
-// dropped in-process and never persisted. Requests made while the agent is
+// dropped in-process and never persisted. Requests made while the collector is
 // down are permanently unobservable; that is inherent to the provider.
 
 const ADAPTER_VERSION = "0.1.0";

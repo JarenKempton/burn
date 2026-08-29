@@ -3,7 +3,7 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, existsSync, renameSync } from "node:fs";
 
 const home = homedir();
 const isMac = process.platform === "darwin";
@@ -38,7 +38,21 @@ export function ensureDir(dir: string): string {
 }
 
 export const serverDbPath = () => join(ensureDir(stateDir()), "server.sqlite");
-export const agentDbPath = () => join(ensureDir(stateDir()), "agent.sqlite");
+
+// The collector role was called "agent" pre-rename; adopt an existing
+// agent.sqlite so cursors/outbox survive (re-reading old cursors would
+// double-count history on the server).
+export function collectorDbPath(): string {
+  const dir = ensureDir(stateDir());
+  const current = join(dir, "collector.sqlite");
+  const legacy = join(dir, "agent.sqlite");
+  if (!existsSync(current) && existsSync(legacy)) {
+    for (const suffix of ["", "-shm", "-wal"]) {
+      if (existsSync(legacy + suffix)) renameSync(legacy + suffix, current + suffix);
+    }
+  }
+  return current;
+}
 export const configPath = () => join(ensureDir(configDir()), "config.json");
 // v0 credential storage: 0600 file. OS keychain integration is a follow-up;
 // the server only ever stores a hash, so exposure is limited to this node.

@@ -9,7 +9,7 @@ process.env.BURN_CONFIG_DIR = join(tmp, "config");
 process.env.BURN_STATE_DIR = join(tmp, "state");
 
 const { startServer } = await import("../src/server/server");
-const { BurnClient } = await import("../src/agent/client");
+const { BurnClient } = await import("../src/collector/client");
 const { loadCredentials } = await import("../src/shared/config");
 const { newId, nowIso } = await import("../src/shared/util");
 import type { ObservationEnvelope } from "../src/shared/types";
@@ -68,7 +68,7 @@ describe("burn end to end", () => {
     const created = await client.createEnrollment({
       node_name: "test-node",
       platform: "linux/x64",
-      agent_version: "0.1.0",
+      collector_version: "0.1.0",
     });
     expect(created.user_code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
 
@@ -108,7 +108,7 @@ describe("burn end to end", () => {
 
   test("heartbeat makes the node online", async () => {
     const client = new BurnClient(base, nodeToken);
-    const res = await client.heartbeat({ sent_at: nowIso(), boot_id: newId(), agent_version: "0.1.0" });
+    const res = await client.heartbeat({ sent_at: nowIso(), boot_id: newId(), collector_version: "0.1.0" });
     expect(res.ok).toBe(true);
 
     const nodes = await fetch(`${base}/v1/nodes`, {

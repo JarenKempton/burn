@@ -1,6 +1,6 @@
 import { statSync, openSync, readSync, closeSync } from "node:fs";
 import type { Database } from "bun:sqlite";
-import { getCursor, setCursor } from "../agent/db";
+import { getCursor, setCursor } from "../collector/db";
 
 // Incremental JSONL log collection shared by the Claude Code and Codex
 // adapters. Both providers stream multiple lines per request into active

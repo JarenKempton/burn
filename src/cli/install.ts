@@ -6,7 +6,7 @@ import { stateDir, configDir } from "../shared/paths";
 // Service installation for the primary targets (issue #7): systemd user units
 // on Linux, launchd agents on macOS. Windows is best-effort later.
 
-const UNITS = ["burn-server", "burn-agent"] as const;
+const UNITS = ["burn-server", "burn-collector"] as const;
 
 export async function cmdServerInstall(): Promise<void> {
   const exe = process.execPath; // compiled binary path, or bun when run from source
@@ -32,13 +32,13 @@ WantedBy=default.target
 `
     );
     writeFileSync(
-      join(dir, "burn-agent.service"),
+      join(dir, "burn-collector.service"),
       `[Unit]
-Description=Burn usage observability agent
+Description=Burn usage observability collector
 After=network.target
 
 [Service]
-ExecStart=${execStart} agent run
+ExecStart=${execStart} collector run
 Restart=on-failure
 RestartSec=5
 
@@ -46,11 +46,11 @@ RestartSec=5
 WantedBy=default.target
 `
     );
-    console.log("Installed systemd user units: burn-server.service, burn-agent.service");
+    console.log("Installed systemd user units: burn-server.service, burn-collector.service");
     console.log("Enable with:");
     console.log("  systemctl --user daemon-reload");
     console.log("  systemctl --user enable --now burn-server   # on the server node");
-    console.log("  systemctl --user enable --now burn-agent    # after `burn enroll`");
+    console.log("  systemctl --user enable --now burn-collector    # after `burn enroll`");
     console.log("Then expose via Tailscale:  tailscale serve --bg 7337");
     return;
   }
@@ -60,7 +60,7 @@ WantedBy=default.target
     mkdirSync(dir, { recursive: true });
     for (const [name, args] of [
       ["dev.burn.server", "server run"],
-      ["dev.burn.agent", "agent run"],
+      ["dev.burn.collector", "collector run"],
     ] as const) {
       const argv = [...execStart.split(" "), ...args.split(" ")];
       writeFileSync(
@@ -76,7 +76,7 @@ WantedBy=default.target
 `
       );
     }
-    console.log("Installed launchd agents: dev.burn.server, dev.burn.agent");
+    console.log("Installed launchd agents: dev.burn.server, dev.burn.collector");
     console.log("Load with:  launchctl load ~/Library/LaunchAgents/dev.burn.server.plist");
     return;
   }
@@ -93,7 +93,7 @@ export async function cmdUninstall(purge: boolean): Promise<void> {
     }
     console.log("Removed systemd user units.");
   } else if (process.platform === "darwin") {
-    for (const name of ["dev.burn.server", "dev.burn.agent"]) {
+    for (const name of ["dev.burn.server", "dev.burn.collector"]) {
       const path = join(homedir(), "Library", "LaunchAgents", `${name}.plist`);
       Bun.spawnSync(["launchctl", "unload", path]);
       if (existsSync(path)) rmSync(path);

@@ -81,6 +81,11 @@ const MIGRATIONS: string[] = [
     message TEXT
   );
   `,
+  // The collecting role was renamed agent → collector.
+  `
+  ALTER TABLE nodes RENAME COLUMN agent_version TO collector_version;
+  ALTER TABLE enrollment_requests RENAME COLUMN agent_version TO collector_version;
+  `,
 ];
 
 export function openServerDb(path = serverDbPath()): Database {
