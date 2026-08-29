@@ -11,8 +11,9 @@ import { cmdProviders } from "./cli/providers";
 import { cmdConfig } from "./cli/config";
 import { cmdServiceInstall, cmdUninstall } from "./cli/install";
 import { DEFAULT_PORT, loadConfig } from "./shared/config";
+import { VERSION } from "./shared/version";
 
-const VERSION = "0.1.0";
+
 
 const HELP = `burn ${VERSION} — local-first AI usage and limits observability
 

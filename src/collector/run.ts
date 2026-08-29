@@ -16,7 +16,7 @@ import { stopLmStudioStream } from "../providers/lmstudio";
 import type { AdapterContext } from "../providers/types";
 import type { ObservationEnvelope } from "../shared/types";
 
-const COLLECTOR_VERSION = "0.1.0";
+import { VERSION as COLLECTOR_VERSION } from "../shared/version";
 
 /** Interactive enrollment when the machine isn't connected yet. Used by
  * `collector run` and `collector install` so neither dead-ends. */

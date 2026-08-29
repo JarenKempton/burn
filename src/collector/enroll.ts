@@ -3,7 +3,7 @@ import { BurnClient } from "./client";
 import { loadCredentials, saveCredentials } from "../shared/config";
 import { openBrowser } from "../shared/util";
 
-const COLLECTOR_VERSION = "0.1.0";
+import { VERSION as COLLECTOR_VERSION } from "../shared/version";
 
 async function reachable(baseUrl: string): Promise<boolean> {
   try {
