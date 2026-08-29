@@ -1,5 +1,17 @@
-import { chmodSync, renameSync } from "node:fs";
+import { chmodSync, renameSync, rmSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
+
+async function downloadWithCurl(url: string, dest: string): Promise<boolean> {
+  try {
+    const proc = Bun.spawn(["curl", "-fL", "--progress-bar", "-o", dest, url], {
+      stdout: "inherit",
+      stderr: "inherit", // curl draws its progress bar on stderr
+    });
+    return (await proc.exited) === 0;
+  } catch {
+    return false; // no curl — caller falls back to fetch
+  }
+}
 
 // `burn update` — self-update from the latest GitHub release. Only works for
 // the compiled binary; source checkouts update with git pull.
@@ -38,22 +50,28 @@ export async function cmdUpdate(currentVersion: string): Promise<void> {
     process.exit(1);
   }
 
-  console.log(`Updating v${currentVersion} → v${latest} ...`);
-  const download = await fetch(asset.browser_download_url, { signal: AbortSignal.timeout(120_000) });
-  if (!download.ok) throw new Error(`download failed: HTTP ${download.status}`);
-  // Buffer explicitly: Bun.write(path, response) hangs forever on these
-  // large redirected release streams (observed in compiled binaries, where
-  // the eventual abort then exits silently with code 0).
-  const bytes = await download.arrayBuffer();
-  if (bytes.byteLength < 1_000_000)
-    throw new Error(`download looks truncated (${bytes.byteLength} bytes)`);
-  console.log(`Downloaded ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB.`);
+  console.log(`Updating v${currentVersion} → v${latest} (~80 MB download) ...`);
 
   // Write beside the current binary, then rename over it — works even while
   // this very process is running (ETXTBSY only bites in-place writes).
   const target = process.execPath;
   const staging = join(dirname(target), `.burn-update-${process.pid}`);
-  await Bun.write(staging, bytes);
+
+  // Prefer curl: it shows progress and avoids Bun-fetch stalls seen with
+  // these large redirected release streams in compiled binaries. Fetch is
+  // the fallback for systems without curl.
+  if (!(await downloadWithCurl(asset.browser_download_url, staging))) {
+    const download = await fetch(asset.browser_download_url, { signal: AbortSignal.timeout(300_000) });
+    if (!download.ok) throw new Error(`download failed: HTTP ${download.status}`);
+    await Bun.write(staging, await download.arrayBuffer());
+  }
+
+  const size = statSync(staging).size;
+  if (size < 1_000_000) {
+    rmSync(staging, { force: true });
+    throw new Error(`download looks truncated (${size} bytes)`);
+  }
+  console.log(`Downloaded ${(size / 1024 / 1024).toFixed(1)} MB.`);
   chmodSync(staging, 0o755);
   renameSync(staging, target);
   console.log(`✓ Updated to v${latest}. Restart any running burn server/collector to use it.`);
