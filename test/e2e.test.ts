@@ -138,6 +138,13 @@ describe("burn end to end", () => {
     expect(created.verification_url).toStartWith("https://goliath.tail-example.ts.net/enroll?code=");
   });
 
+  test("whoami verifies a node credential without side effects", async () => {
+    const client = new BurnClient(base, nodeToken);
+    const me = await client.whoami();
+    expect(me.node_id).toBe(nodeId);
+    await expect(new BurnClient(base, "bad-token").whoami()).rejects.toThrow(/401/);
+  });
+
   test("heartbeat makes the node online", async () => {
     const client = new BurnClient(base, nodeToken);
     const res = await client.heartbeat({ sent_at: nowIso(), boot_id: newId(), collector_version: "0.1.0" });

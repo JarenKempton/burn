@@ -3,7 +3,7 @@
 // CLI contract per issue #7.
 
 import { startServer } from "./server/server";
-import { enroll } from "./collector/enroll";
+import { enroll, enrollDefault } from "./collector/enroll";
 import { runCollector } from "./collector/run";
 import { claudeStatuslineTee } from "./providers/claude-code";
 import { cmdStatus } from "./cli/status";
@@ -90,23 +90,15 @@ async function main(): Promise<void> {
     }
     case "enroll": {
       const url = sub ?? loadConfig().collector?.server_url;
-      if (!url) {
-        const { loadCredentials } = await import("./shared/config");
-        const node = loadCredentials().node;
-        if (node) {
-          console.log(`Already enrolled to ${node.server_url} (node ${node.node_id}).`);
-          console.log("To enroll with a different server: burn enroll <server-url>");
-          return;
-        }
-        // mDNS discovery is a follow-up; explicit URL is the supported path today.
-        console.error("Usage: burn enroll <server-url>   (e.g. burn enroll http://server:7337)");
-        process.exit(1);
-      }
+      // With no URL: verify the stored credential and offer repair (mDNS
+      // discovery is a follow-up; explicit URL is the supported path today).
+      if (!url) return enrollDefault();
       return enroll(url);
     }
     case "collector": {
       if (sub === "run") return runCollector({ once: rest.includes("--once") });
       if (sub === "install") return cmdServiceInstall("collector");
+      if (sub === "enroll") return rest[0] ? enroll(rest[0]) : enrollDefault(); // common guess; alias for burn enroll
       break;
     }
     case "status":

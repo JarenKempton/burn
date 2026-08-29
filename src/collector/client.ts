@@ -61,6 +61,8 @@ export class BurnClient {
       device_code: deviceCode,
     });
 
+  whoami = () => this.req<{ node_id: string; name: string }>("GET", "/v1/whoami", undefined, true);
+
   heartbeat = (body: HeartbeatRequest) =>
     this.req<{ ok: boolean; received_at: string }>("POST", "/v1/heartbeat", body, true);
 

@@ -142,6 +142,7 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
   // Nodes authenticate with their enrollment-issued token (hash stored server-side).
   app.use("/v1/heartbeat", nodeAuth);
   app.use("/v1/observations", nodeAuth);
+  app.use("/v1/whoami", nodeAuth);
 
   async function nodeAuth(c: Context<Env>, next: Next) {
     const h = c.req.header("authorization");
@@ -325,6 +326,13 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
   });
 
   // ---- Authenticated collector ingestion ----
+
+  // Credential check with no side effects: lets a collector/CLI verify its
+  // node token still maps to a live node.
+  app.get("/v1/whoami", (c) => {
+    const node = c.get("node");
+    return c.json({ node_id: node.node_id, name: node.name });
+  });
 
   app.post("/v1/heartbeat", async (c) => {
     const node = c.get("node");

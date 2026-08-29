@@ -35,12 +35,28 @@ export async function ensureEnrolled(): Promise<void> {
 
 export async function runCollector(opts?: { once?: boolean; banner?: boolean }): Promise<void> {
   await ensureEnrolled();
-  const creds = loadCredentials();
+  let creds = loadCredentials();
   if (!creds.node) process.exit(1);
   const cfg = loadConfig();
-  const client = new BurnClient(cfg.collector?.server_url ?? creds.node.server_url, creds.node.node_token);
+  let client = new BurnClient(cfg.collector?.server_url ?? creds.node.server_url, creds.node.node_token);
   const db = openCollectorDb();
-  const nodeId = creds.node.node_id;
+  let nodeId = creds.node.node_id;
+
+  // A long-running service can outlive its credential (server reset, node
+  // revoked, re-enrollment). On 401, pick up fresh credentials from disk if
+  // they changed; otherwise tell the human exactly what to do.
+  const handleAuthFailure = (err: unknown): void => {
+    if (!String(err).includes("401")) return;
+    const fresh = loadCredentials();
+    if (fresh.node && fresh.node.node_token !== creds.node!.node_token) {
+      creds = fresh;
+      client = new BurnClient(cfg.collector?.server_url ?? fresh.node.server_url, fresh.node.node_token);
+      nodeId = fresh.node.node_id;
+      console.log("[auth] picked up new enrollment credentials");
+    } else {
+      console.error("[auth] this machine's credential was rejected — fix with: burn enroll");
+    }
+  };
 
   const bootId = newId();
   const { previousUnclean } = beginSession(db, bootId);
@@ -62,6 +78,7 @@ export async function runCollector(opts?: { once?: boolean; banner?: boolean }):
       previousSession = null; // report prior unclean termination once
     } catch (err) {
       console.error(`[heartbeat] ${err}`);
+      handleAuthFailure(err);
     }
   };
 
@@ -105,6 +122,7 @@ export async function runCollector(opts?: { once?: boolean; banner?: boolean }):
       } catch (err) {
         markAttempt(db, batch.map((b) => b.observation_id), String(err));
         console.error(`[flush] delivery failed (${outboxDepth(db)} queued): ${err}`);
+        handleAuthFailure(err);
         return; // retry next cycle; outbox preserves everything
       }
     }
@@ -132,6 +150,9 @@ export async function runCollector(opts?: { once?: boolean; banner?: boolean }):
   const collectTimer = setInterval(cycle, collectSeconds * 1000);
 
   const shutdown = () => {
+    // If any cleanup step wedges, still die: a lingering process holds the
+    // port and makes the service restart fail.
+    setTimeout(() => process.exit(1), 3000).unref();
     clearInterval(hbTimer);
     clearInterval(collectTimer);
     stopLmStudioStream();
