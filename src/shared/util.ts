@@ -20,6 +20,16 @@ export function newUserCode(): string {
   return `${part(4)}-${part(4)}`;
 }
 
+/** best-effort browser open; callers always print the URL too for headless use */
+export function openBrowser(url: string): void {
+  const cmd = process.platform === "darwin" ? "open" : "xdg-open";
+  try {
+    Bun.spawn([cmd, url], { stdout: "ignore", stderr: "ignore" });
+  } catch {
+    // headless is fine
+  }
+}
+
 export function timingSafeEqualStr(a: string, b: string): boolean {
   const ha = createHash("sha256").update(a).digest();
   const hb = createHash("sha256").update(b).digest();

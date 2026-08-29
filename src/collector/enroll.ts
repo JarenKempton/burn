@@ -1,17 +1,9 @@
 import { hostname } from "node:os";
 import { BurnClient } from "./client";
 import { loadCredentials, saveCredentials } from "../shared/config";
+import { openBrowser } from "../shared/util";
 
 const COLLECTOR_VERSION = "0.1.0";
-
-function tryOpenBrowser(url: string): void {
-  const cmd = process.platform === "darwin" ? "open" : "xdg-open";
-  try {
-    Bun.spawn([cmd, url], { stdout: "ignore", stderr: "ignore" });
-  } catch {
-    // Headless is fine — the URL is printed for the admin to open elsewhere.
-  }
-}
 
 /**
  * One-command enrollment (issue #7): create a device-authorization request,
@@ -37,7 +29,7 @@ export async function enroll(serverUrl: string): Promise<void> {
   console.log(`  Approve at:         ${created.verification_url}`);
   console.log("");
   console.log("Waiting for an administrator to approve this node in the browser...");
-  tryOpenBrowser(created.verification_url);
+  openBrowser(created.verification_url);
 
   const expires = Date.parse(created.expires_at);
   while (Date.now() < expires) {
