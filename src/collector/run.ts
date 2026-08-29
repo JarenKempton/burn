@@ -102,6 +102,11 @@ export async function runCollector(opts?: { once?: boolean }): Promise<void> {
     await flush();
   };
 
+  if (!opts?.once) {
+    console.log(
+      `burn collector running (node ${nodeId} → ${client.baseUrl}); heartbeat ${heartbeatSeconds}s, collect ${collectSeconds}s`
+    );
+  }
   await heartbeat();
   await cycle();
   if (opts?.once) {
@@ -110,10 +115,6 @@ export async function runCollector(opts?: { once?: boolean }): Promise<void> {
     console.log(`Done. Outbox depth: ${outboxDepth(db)}`);
     process.exit(0);
   }
-
-  console.log(
-    `burn collector running (node ${nodeId}); heartbeat ${heartbeatSeconds}s, collect ${collectSeconds}s`
-  );
   const hbTimer = setInterval(heartbeat, heartbeatSeconds * 1000);
   const collectTimer = setInterval(cycle, collectSeconds * 1000);
 

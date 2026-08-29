@@ -106,6 +106,22 @@ describe("burn end to end", () => {
     await expect(client.exchangeToken(created.request_id, created.device_code)).rejects.toThrow(/already_used/);
   });
 
+  test("enrollment URLs honor reverse-proxy forwarded headers", async () => {
+    // Behind Tailscale Serve the local hop is http; returned URLs must use
+    // the proxy's advertised scheme/host or collectors save a dead URL.
+    const res = await fetch(`${base}/v1/enrollment/requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "goliath.tail-example.ts.net",
+      },
+      body: JSON.stringify({ node_name: "proxy-node", platform: "linux/x64", collector_version: "0.1.0" }),
+    });
+    const created = await res.json();
+    expect(created.verification_url).toStartWith("https://goliath.tail-example.ts.net/enroll?code=");
+  });
+
   test("heartbeat makes the node online", async () => {
     const client = new BurnClient(base, nodeToken);
     const res = await client.heartbeat({ sent_at: nowIso(), boot_id: newId(), collector_version: "0.1.0" });

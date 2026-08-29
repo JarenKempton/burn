@@ -53,6 +53,13 @@ async function main(): Promise<void> {
     case "enroll": {
       const url = sub ?? loadConfig().collector?.server_url;
       if (!url) {
+        const { loadCredentials } = await import("./shared/config");
+        const node = loadCredentials().node;
+        if (node) {
+          console.log(`Already enrolled to ${node.server_url} (node ${node.node_id}).`);
+          console.log("To enroll with a different server: burn enroll <server-url>");
+          return;
+        }
         // mDNS discovery is a follow-up; explicit URL is the supported path today.
         console.error("Usage: burn enroll <server-url>   (e.g. burn enroll http://server:7337)");
         process.exit(1);

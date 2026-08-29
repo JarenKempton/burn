@@ -24,11 +24,18 @@ export class BurnClient {
   }
 
   private async req<T>(method: string, path: string, body?: unknown, auth = false): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: this.headers(auth),
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: this.headers(auth),
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch {
+      // Bun's raw fetch TypeError ("Unable to connect...") is unhelpful;
+      // say what we dialed so a bad saved URL is obvious.
+      throw new Error(`cannot reach ${this.baseUrl} — is the server up and the URL right?`);
+    }
     if (!res.ok) {
       let detail = "";
       try {

@@ -95,6 +95,17 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
     return "offline";
   };
 
+  // Behind Tailscale Serve (or any reverse proxy) the local hop is plain
+  // HTTP, so the request URL's scheme is wrong for URLs we hand back to
+  // clients. Trust X-Forwarded-* when present — the server only binds
+  // localhost, so those headers come from the local proxy.
+  const requestOrigin = (c: Context<Env>): string => {
+    const url = new URL(c.req.url);
+    const proto = c.req.header("x-forwarded-proto")?.split(",")[0]?.trim() || url.protocol.replace(":", "");
+    const host = c.req.header("x-forwarded-host")?.split(",")[0]?.trim() || url.host;
+    return `${proto}://${host}`;
+  };
+
   const expireStale = () => {
     db.run("UPDATE enrollment_requests SET status = 'expired' WHERE status = 'pending' AND expires_at < ?", [
       nowIso(),
@@ -182,7 +193,7 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
       [requestId, userCode, sha256Hex(deviceCode), body.node_name, body.platform, body.collector_version ?? null, nowIso(), expiresAt]
     );
-    const origin = new URL(c.req.url).origin;
+    const origin = requestOrigin(c);
     const created: EnrollmentRequestCreated = {
       request_id: requestId,
       user_code: userCode,
@@ -237,7 +248,7 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
     const issued: EnrollmentTokenIssued = {
       node_id: nodeId,
       node_token: nodeToken,
-      canonical_url: new URL(c.req.url).origin,
+      canonical_url: requestOrigin(c),
     };
     return c.json(issued, 201);
   });
