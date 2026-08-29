@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import type { Database } from "bun:sqlite";
 import { openServerDb, getMeta, setMeta } from "./db";
-import { approvalPage, approvalResultPage } from "./pages";
+import { approvalPage, approvalResultPage, loginPage } from "./pages";
+import { getCookie, setCookie } from "hono/cookie";
 import {
   API_VERSION,
   PROTOCOL_VERSION,
@@ -18,7 +19,7 @@ import {
   type WellKnownBurn,
 } from "../shared/types";
 import { loadConfig, loadCredentials, saveCredentials, DEFAULT_PORT, DEFAULT_HEARTBEAT_SECONDS } from "../shared/config";
-import { newId, newToken, newUserCode, nowIso, sha256Hex, timingSafeEqualStr } from "../shared/util";
+import { hmacHex, newId, newToken, newUserCode, nowIso, sha256Hex, timingSafeEqualStr } from "../shared/util";
 import { hasUsers, verifyUser } from "./auth";
 import { hostname } from "node:os";
 
@@ -285,11 +286,52 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
     return c.json(issued, 201);
   });
 
-  // ---- Enrollment approval page (admin, browser) ----
+  // ---- Browser sessions (username/password → signed cookie) ----
+
+  let sessionSecret = getMeta(db, "session_secret");
+  if (!sessionSecret) {
+    sessionSecret = newToken();
+    setMeta(db, "session_secret", sessionSecret);
+  }
+  const SESSION_HOURS = 12;
+
+  const sessionUser = (c: Context<Env>): string | null => {
+    const cookie = getCookie(c, "burn_session");
+    if (!cookie) return null;
+    const [user, expStr, sig] = cookie.split("|");
+    if (!user || !expStr || !sig) return null;
+    const exp = Number(expStr);
+    if (!Number.isFinite(exp) || exp < Date.now()) return null;
+    if (!timingSafeEqualStr(sig, hmacHex(sessionSecret!, `${user}|${exp}`))) return null;
+    return user;
+  };
+
+  app.post("/login", async (c) => {
+    const form = await c.req.formData();
+    const username = String(form.get("username") ?? "");
+    const password = String(form.get("password") ?? "");
+    let next = String(form.get("next") ?? "/enroll");
+    if (!next.startsWith("/")) next = "/enroll"; // no open redirects
+    if (!hasUsers(db)) return c.html(loginPage(next, null, false), 403);
+    if (!(await verifyUser(db, username, password)))
+      return c.html(loginPage(next, "Invalid username or password.", true), 403);
+    const exp = Date.now() + SESSION_HOURS * 3600_000;
+    setCookie(c, "burn_session", `${username}|${exp}|${hmacHex(sessionSecret!, `${username}|${exp}`)}`, {
+      httpOnly: true,
+      sameSite: "Lax",
+      path: "/",
+      maxAge: SESSION_HOURS * 3600,
+    });
+    return c.redirect(next);
+  });
+
+  // ---- Enrollment approval page (login first, then details) ----
 
   app.get("/enroll", (c) => {
     expireStale();
     const code = c.req.query("code") ?? "";
+    const user = sessionUser(c);
+    if (!user) return c.html(loginPage(`/enroll?code=${encodeURIComponent(code)}`, null, hasUsers(db)));
     const row = db
       .query<
         { request_id: string; user_code: string; node_name: string; platform: string; requested_at: string; status: string },
@@ -298,20 +340,13 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
         "SELECT request_id, user_code, node_name, platform, requested_at, status FROM enrollment_requests WHERE user_code = ? ORDER BY requested_at DESC"
       )
       .get(code);
-    return c.html(approvalPage(code, row ?? null));
+    return c.html(approvalPage(user, code, row ?? null));
   });
 
   app.post("/enroll/action", async (c) => {
+    const user = sessionUser(c);
+    if (!user) return c.html(loginPage("/enroll", "Sign in to approve machines.", hasUsers(db)), 403);
     const form = await c.req.formData();
-    if (!hasUsers(db))
-      return c.html(
-        approvalResultPage("No admin account exists yet — run `burn admin create` on the server.", false),
-        403
-      );
-    const username = String(form.get("username") ?? "");
-    const password = String(form.get("password") ?? "");
-    if (!(await verifyUser(db, username, password)))
-      return c.html(approvalResultPage("Invalid username or password.", false), 403);
     const requestId = String(form.get("request_id") ?? "");
     const action = String(form.get("action") ?? "");
     const status = action === "approve" ? "approved" : "denied";

@@ -25,10 +25,10 @@ Usage:
   burn collector install       Install + start the collector as a user service
   burn enroll [server-url]     Enroll this machine with a Burn server (browser approval)
   burn status                  Show machines, quota, and usage
+  burn usage [--days N]        Token usage and cost by provider × model
   burn providers list          List providers and detection status
   burn providers add [name]    Connect a provider (interactive without name)
   burn providers test [name]   Run one collection for a provider and show results
-  burn admin create            Create a browser admin account (username/password)
   burn config                  Show config, paths, and the API token
   burn update                  Self-update the compiled binary from GitHub releases
   burn uninstall               Remove services; keeps data unless --purge
@@ -57,7 +57,7 @@ async function main(): Promise<void> {
               const { createAdminInteractive } = await import("./cli/admin");
               await createAdminInteractive(handle.db);
             } else {
-              console.log("  ⚠ no admin account yet — approvals need one: burn admin create");
+              console.log("  ⚠ no admin account yet — run `burn server install` in a terminal to create it");
             }
           }
         }
@@ -103,14 +103,14 @@ async function main(): Promise<void> {
     }
     case "status":
       return cmdStatus();
+    case "usage": {
+      const { cmdUsage } = await import("./cli/usage");
+      return cmdUsage([sub ?? "", ...rest]);
+    }
     case "providers":
       return cmdProviders(sub, rest);
     case "config":
       return cmdConfig();
-    case "admin": {
-      const { cmdAdmin } = await import("./cli/admin");
-      return cmdAdmin(sub);
-    }
     case "uninstall":
       return cmdUninstall(rest.includes("--purge"));
     case "update": {

@@ -75,40 +75,47 @@ describe("burn end to end", () => {
     // Token exchange before approval must fail.
     await expect(client.exchangeToken(created.request_id, created.device_code)).rejects.toThrow(/not_approved/);
 
-    // Approval page shows the request; wrong admin token is rejected.
-    const page = await fetch(`${base}/enroll?code=${created.user_code}`).then((r) => r.text());
-    expect(page).toContain(created.user_code);
-    expect(page).toContain("test-node");
-
-    // No admin account yet: approval is impossible.
-    const noUsers = await fetch(`${base}/enroll/action`, {
+    // Approving requires a signed-in session; no session → login page, not details.
+    const noSession = await fetch(`${base}/enroll/action`, {
       method: "POST",
-      body: new URLSearchParams({ request_id: created.request_id, action: "approve", username: "a", password: "b" }),
+      body: new URLSearchParams({ request_id: created.request_id, action: "approve" }),
     });
-    expect(noUsers.status).toBe(403);
+    expect(noSession.status).toBe(403);
+
+    // Before login, the page must not leak the pending request's details.
+    const anonymousPage = await fetch(`${base}/enroll?code=${created.user_code}`).then((r) => r.text());
+    expect(anonymousPage).not.toContain("test-node");
 
     const { createUser } = await import("../src/server/auth");
     await createUser(handle.db, "admin", "correct-horse-battery");
 
-    const badApprove = await fetch(`${base}/enroll/action`, {
+    const badLogin = await fetch(`${base}/login`, {
       method: "POST",
+      body: new URLSearchParams({ username: "admin", password: "wrong-password", next: "/enroll" }),
+    });
+    expect(badLogin.status).toBe(403);
+
+    const login = await fetch(`${base}/login`, {
+      method: "POST",
+      redirect: "manual",
       body: new URLSearchParams({
-        request_id: created.request_id,
-        action: "approve",
         username: "admin",
-        password: "wrong-password",
+        password: "correct-horse-battery",
+        next: `/enroll?code=${created.user_code}`,
       }),
     });
-    expect(badApprove.status).toBe(403);
+    expect(login.status).toBe(302);
+    const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
+
+    const page = await fetch(`${base}/enroll?code=${created.user_code}`, { headers: { cookie } }).then((r) =>
+      r.text()
+    );
+    expect(page).toContain("test-node");
 
     const approve = await fetch(`${base}/enroll/action`, {
       method: "POST",
-      body: new URLSearchParams({
-        request_id: created.request_id,
-        action: "approve",
-        username: "admin",
-        password: "correct-horse-battery",
-      }),
+      headers: { cookie },
+      body: new URLSearchParams({ request_id: created.request_id, action: "approve" }),
     });
     expect(approve.status).toBe(200);
 

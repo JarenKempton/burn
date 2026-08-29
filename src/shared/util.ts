@@ -1,4 +1,8 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
+
+export function hmacHex(key: string, message: string): string {
+  return createHmac("sha256", key).update(message).digest("hex");
+}
 
 export const newId = (): string => Bun.randomUUIDv7();
 

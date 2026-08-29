@@ -86,12 +86,17 @@ export const codexAdapter: Adapter = {
       const region = readNewRegion(ctx.db, "codex", file);
       if (!region) continue;
 
-      let usage = { input: 0, cached: 0, output: 0, reasoning: 0, requests: 0 };
-      let first: string | null = null;
-      let last: string | null = null;
+      // Track per model so usage/cost can be broken down. token_count lines
+      // don't name the model; the session's turn_context does — apply the
+      // most recent one seen (sessions rarely switch models mid-stream).
+      const byModel = new Map<string, { input: number; cached: number; output: number; reasoning: number; requests: number; first: string; last: string }>();
+      let currentModel = "unknown";
 
       for (const raw of region.lines) {
         const line = raw as TokenCountLine;
+        const model = (line as any)?.payload?.model ?? (line as any)?.model;
+        if (typeof model === "string" && model) currentModel = model;
+
         const isTokenCount =
           line?.type === "event_msg"
             ? line.payload?.type === "token_count"
@@ -101,13 +106,15 @@ export const codexAdapter: Adapter = {
         const ts = line.timestamp ?? nowIso();
         const lastUsage = line.payload?.info?.last_token_usage;
         if (lastUsage) {
-          usage.input += lastUsage.input_tokens ?? 0;
-          usage.cached += lastUsage.cached_input_tokens ?? 0;
-          usage.output += lastUsage.output_tokens ?? 0;
-          usage.reasoning += lastUsage.reasoning_output_tokens ?? 0;
-          usage.requests += 1;
-          if (first === null || ts < first) first = ts;
-          if (last === null || ts > last) last = ts;
+          const agg = byModel.get(currentModel) ?? { input: 0, cached: 0, output: 0, reasoning: 0, requests: 0, first: ts, last: ts };
+          agg.input += lastUsage.input_tokens ?? 0;
+          agg.cached += lastUsage.cached_input_tokens ?? 0;
+          agg.output += lastUsage.output_tokens ?? 0;
+          agg.reasoning += lastUsage.reasoning_output_tokens ?? 0;
+          agg.requests += 1;
+          if (ts < agg.first) agg.first = ts;
+          if (ts > agg.last) agg.last = ts;
+          byModel.set(currentModel, agg);
         }
         // Many token_count lines carry an empty rate_limits shell (both
         // windows null); only a line with at least one real window counts.
@@ -117,19 +124,20 @@ export const codexAdapter: Adapter = {
         }
       }
 
-      if (usage.requests > 0 && first && last) {
+      for (const [model, agg] of byModel) {
         const payload: ConsumptionPayload = {
           type: "consumption",
-          period_start: first,
-          period_end: last,
-          input_tokens: usage.input,
-          cached_input_tokens: usage.cached,
-          output_tokens: usage.output,
-          reasoning_output_tokens: usage.reasoning,
-          requests: usage.requests,
+          period_start: agg.first,
+          period_end: agg.last,
+          model: model === "unknown" ? null : model,
+          input_tokens: agg.input,
+          cached_input_tokens: agg.cached,
+          output_tokens: agg.output,
+          reasoning_output_tokens: agg.reasoning,
+          requests: agg.requests,
           counting: "local_log",
         };
-        out.push(envelope(ctx, payload, last));
+        out.push(envelope(ctx, payload, agg.last));
       }
       commitRegion(ctx.db, "codex", region);
     }

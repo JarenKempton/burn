@@ -92,10 +92,10 @@ export async function enroll(serverUrl: string, opts?: { skipExistingConfirm?: b
   });
 
   console.log("");
-  console.log(`  Confirmation code:  ${created.user_code}`);
-  console.log(`  Approve at:         ${created.verification_url}`);
+  console.log("Approve this machine in your browser (sign in as the Burn admin):");
+  console.log(`  ${created.verification_url}`);
   console.log("");
-  console.log("Waiting for an administrator to approve this node in the browser...");
+  console.log("Waiting for approval...");
   openBrowser(created.verification_url);
 
   const expires = Date.parse(created.expires_at);
