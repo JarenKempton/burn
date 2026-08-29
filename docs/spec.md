@@ -70,9 +70,12 @@ GET  /v1/adapters/health               admin auth
   device code, and token exchange requires both approval and the device code.
 - Enrollment requests expire (10 min), are single-use, and are rate-limited
   (max 10 pending).
-- Tailnet membership alone never confers admin authorization; admin surfaces
-  require the application admin token (Tailscale identity headers are a
-  follow-up admin path).
+- Tailnet membership alone never confers admin authorization. Browser
+  approval uses admin accounts (username/password, argon2id-hashed in the
+  server's users table, bootstrapped by \`burn admin create\` or first
+  interactive server start). The API accepts the generated admin token
+  (Bearer, for CLI/scripts) or an admin account via HTTP Basic. Tailscale
+  identity headers are a follow-up admin path.
 - Provider credentials (`credentials.json`, mode 0600) never leave the
   collecting node and are never part of any observation.
 

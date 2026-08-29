@@ -11,7 +11,7 @@ const shell = (title: string, body: string) => `<!doctype html>
   .card { border: 1px solid #ddd; border-radius: 8px; padding: 1.5rem; }
   .code { font-family: ui-monospace, monospace; font-size: 1.6rem; letter-spacing: 0.1em; }
   dt { color: #666; font-size: 0.85rem; } dd { margin: 0 0 0.75rem; }
-  input[type=password] { width: 100%; padding: 0.5rem; margin: 0.5rem 0 1rem; box-sizing: border-box; }
+  input { width: 100%; padding: 0.5rem; margin: 0.5rem 0 1rem; box-sizing: border-box; }
   button { padding: 0.5rem 1.25rem; border-radius: 6px; border: 1px solid #999; cursor: pointer; background: #f5f5f5; }
   button.approve { background: #166534; color: white; border-color: #166534; }
 </style></head><body><h1>burn</h1>${body}</body></html>`;
@@ -40,7 +40,8 @@ export function approvalPage(
       </dl>
       <form method="post" action="/enroll/action">
         <input type="hidden" name="request_id" value="${esc(req.request_id)}">
-        <label>Admin token<br><input type="password" name="admin_token" autofocus required></label><br>
+        <label>Username<br><input name="username" autocomplete="username" autofocus required></label><br>
+        <label>Password<br><input type="password" name="password" autocomplete="current-password" required></label><br>
         <button class="approve" name="action" value="approve">Approve</button>
         <button name="action" value="deny">Deny</button>
       </form>

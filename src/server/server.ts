@@ -19,6 +19,7 @@ import {
 } from "../shared/types";
 import { loadConfig, loadCredentials, saveCredentials, DEFAULT_PORT, DEFAULT_HEARTBEAT_SECONDS } from "../shared/config";
 import { newId, newToken, newUserCode, nowIso, sha256Hex, timingSafeEqualStr } from "../shared/util";
+import { hasUsers, verifyUser } from "./auth";
 import { hostname } from "node:os";
 
 const ENROLL_TTL_MS = 10 * 60 * 1000;
@@ -163,11 +164,19 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
   app.use("/v1/adapters/*", adminAuth);
 
   async function adminAuth(c: Context<Env>, next: Next) {
-    const h = c.req.header("authorization");
-    const token = (h?.startsWith("Bearer ") ? h.slice(7) : null) ?? c.req.query("admin_token");
-    if (!token || !timingSafeEqualStr(token, adminToken))
-      return c.json(apiError("unauthorized", "Admin token required"), 401);
-    await next();
+    const h = c.req.header("authorization") ?? "";
+    // Bearer admin token: CLI/scripts. Basic username:password: humans/curl.
+    if (h.startsWith("Bearer ") && timingSafeEqualStr(h.slice(7), adminToken)) return next();
+    if (h.startsWith("Basic ")) {
+      try {
+        const decoded = atob(h.slice(6));
+        const sep = decoded.indexOf(":");
+        if (sep > 0 && (await verifyUser(db, decoded.slice(0, sep), decoded.slice(sep + 1)))) return next();
+      } catch {}
+    }
+    const qs = c.req.query("admin_token");
+    if (qs && timingSafeEqualStr(qs, adminToken)) return next();
+    return c.json(apiError("unauthorized", "Admin credentials required (Bearer token or Basic auth)"), 401);
   }
 
   // ---- Discovery ----
@@ -293,9 +302,15 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
 
   app.post("/enroll/action", async (c) => {
     const form = await c.req.formData();
-    const token = String(form.get("admin_token") ?? "");
-    if (!timingSafeEqualStr(token, adminToken))
-      return c.html(approvalResultPage("Invalid admin token.", false), 403);
+    if (!hasUsers(db))
+      return c.html(
+        approvalResultPage("No admin account exists yet — run `burn admin create` on the server.", false),
+        403
+      );
+    const username = String(form.get("username") ?? "");
+    const password = String(form.get("password") ?? "");
+    if (!(await verifyUser(db, username, password)))
+      return c.html(approvalResultPage("Invalid username or password.", false), 403);
     const requestId = String(form.get("request_id") ?? "");
     const action = String(form.get("action") ?? "");
     const status = action === "approve" ? "approved" : "denied";
@@ -344,7 +359,7 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
     );
     db.transaction(() => {
       for (const obs of body.observations) {
-        const reason = validateObservation(obs, node.node_id);
+        const reason = validateObservation(obs);
         if (reason) {
           result.rejected.push({ observation_id: obs?.observation_id ?? "?", reason });
           continue;
@@ -455,12 +470,14 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
   };
 }
 
-function validateObservation(obs: ObservationEnvelope, authedNodeId: string): string | null {
+function validateObservation(obs: ObservationEnvelope): string | null {
   if (!obs || typeof obs !== "object") return "not an object";
   if (obs.schema_version !== OBSERVATION_SCHEMA_VERSION)
     return `unsupported schema_version ${obs.schema_version}`;
   if (!obs.observation_id) return "missing observation_id";
-  if (obs.node_id !== authedNodeId) return "node_id does not match authenticated node";
+  // The envelope's node_id is advisory: storage always stamps the
+  // authenticated node's id, so a mismatch (e.g. an outbox that survived a
+  // re-enrollment) is harmless rather than a reason to drop history.
   if (!obs.provider_id) return "missing provider_id";
   if (!obs.observed_at || !obs.collected_at) return "missing timestamps";
   if (!obs.adapter_id || !obs.adapter_version) return "missing adapter identity";

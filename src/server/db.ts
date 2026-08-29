@@ -86,6 +86,14 @@ const MIGRATIONS: string[] = [
   ALTER TABLE nodes RENAME COLUMN agent_version TO collector_version;
   ALTER TABLE enrollment_requests RENAME COLUMN agent_version TO collector_version;
   `,
+  // Admin accounts for browser surfaces (username/password, argon2id hash).
+  `
+  CREATE TABLE users (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export function openServerDb(path = serverDbPath()): Database {

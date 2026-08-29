@@ -80,9 +80,24 @@ describe("burn end to end", () => {
     expect(page).toContain(created.user_code);
     expect(page).toContain("test-node");
 
+    // No admin account yet: approval is impossible.
+    const noUsers = await fetch(`${base}/enroll/action`, {
+      method: "POST",
+      body: new URLSearchParams({ request_id: created.request_id, action: "approve", username: "a", password: "b" }),
+    });
+    expect(noUsers.status).toBe(403);
+
+    const { createUser } = await import("../src/server/auth");
+    await createUser(handle.db, "admin", "correct-horse-battery");
+
     const badApprove = await fetch(`${base}/enroll/action`, {
       method: "POST",
-      body: new URLSearchParams({ request_id: created.request_id, action: "approve", admin_token: "wrong" }),
+      body: new URLSearchParams({
+        request_id: created.request_id,
+        action: "approve",
+        username: "admin",
+        password: "wrong-password",
+      }),
     });
     expect(badApprove.status).toBe(403);
 
@@ -91,7 +106,8 @@ describe("burn end to end", () => {
       body: new URLSearchParams({
         request_id: created.request_id,
         action: "approve",
-        admin_token: handle.adminToken,
+        username: "admin",
+        password: "correct-horse-battery",
       }),
     });
     expect(approve.status).toBe(200);
@@ -145,12 +161,17 @@ describe("burn end to end", () => {
     expect(again.duplicate).toEqual([obs.observation_id]);
   });
 
-  test("observations for another node id are rejected", async () => {
+  test("observations are stamped with the authenticated node id", async () => {
+    // The envelope's node_id is advisory (an outbox can survive
+    // re-enrollment); storage always uses the authenticated identity.
     const client = new BurnClient(base, nodeToken);
     const forged = consumption("some-other-node");
     const res = await client.sendObservations([forged]);
-    expect(res.accepted).toEqual([]);
-    expect(res.rejected[0]?.reason).toContain("node_id");
+    expect(res.accepted).toEqual([forged.observation_id]);
+    const row = handle.db
+      .query<{ node_id: string }, [string]>("SELECT node_id FROM observations WHERE observation_id = ?")
+      .get(forged.observation_id);
+    expect(row?.node_id).toBe(nodeId);
   });
 
   test("unauthenticated ingestion and queries are rejected", async () => {
@@ -158,6 +179,17 @@ describe("burn end to end", () => {
     await expect(anon.sendObservations([consumption(nodeId)])).rejects.toThrow(/401/);
     const res = await fetch(`${base}/v1/usage`);
     expect(res.status).toBe(401);
+  });
+
+  test("admin API accepts username/password via Basic auth", async () => {
+    const ok = await fetch(`${base}/v1/usage`, {
+      headers: { authorization: "Basic " + btoa("admin:correct-horse-battery") },
+    });
+    expect(ok.status).toBe(200);
+    const bad = await fetch(`${base}/v1/usage`, {
+      headers: { authorization: "Basic " + btoa("admin:nope") },
+    });
+    expect(bad.status).toBe(401);
   });
 
   test("usage summary aggregates consumption and surfaces quota snapshots", async () => {
@@ -178,9 +210,10 @@ describe("burn end to end", () => {
       headers: { authorization: `Bearer ${handle.adminToken}` },
     }).then((r) => r.json());
 
+    // Two consumption observations delivered by earlier tests (1000/200 each).
     const day = usage.consumption_by_day.find((r: any) => r.provider_id === "claude_code");
-    expect(day.input_tokens).toBe(1000);
-    expect(day.output_tokens).toBe(200);
+    expect(day.input_tokens).toBe(2000);
+    expect(day.output_tokens).toBe(400);
 
     const quota = usage.latest_quota_snapshots.find((q: any) => q.provider_id === "claude_code");
     expect(quota.used_percent).toBe(42);

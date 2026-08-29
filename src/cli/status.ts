@@ -45,7 +45,7 @@ export async function cmdStatus(): Promise<void> {
       const self = n.node_id === creds.node.node_id ? ", this machine" : "";
       const hint = n.liveness === "offline" ? " — is `burn collector run` (or the server) running there?" : "";
       console.log(
-        `  ${icon(n.liveness)} ${n.name} (${n.platform}${self}) — ${n.liveness}, last heartbeat ${n.last_heartbeat_received_at ?? "never"}${hint}`
+        `  ${icon(n.liveness)} ${n.name} (${n.platform}${self}) — ${n.liveness}, last heartbeat ${ago(n.last_heartbeat_received_at)}${hint}`
       );
     }
 
@@ -53,7 +53,7 @@ export async function cmdStatus(): Promise<void> {
       console.log("\nQuota windows:");
       for (const q of usage.latest_quota_snapshots) {
         const pct = q.used_percent != null ? `${Math.round(q.used_percent)}% used` : "usage unknown";
-        const resets = q.resets_at ? `, resets ${q.resets_at}` : "";
+        const resets = q.resets_at ? `, resets ${until(q.resets_at)}` : "";
         const where = nodeName.get(q.node_id) ?? q.node_id.slice(0, 8);
         console.log(`  ${q.provider_id} @ ${where} [${q.window?.label ?? q.window?.kind}] ${pct}${resets}`);
       }
@@ -97,4 +97,30 @@ export async function cmdStatus(): Promise<void> {
 }
 
 const icon = (liveness: string) => (liveness === "online" ? "●" : liveness === "stale" ? "◐" : "○");
+
+/** "just now", "5 minutes ago", "3 hours ago", "2 days ago", "July 23, 2026" */
+function ago(iso: string | null): string {
+  if (!iso) return "never";
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  if (s < 45) return "just now";
+  if (s < 60 * 90) return plural(Math.round(s / 60), "minute") + " ago";
+  if (s < 3600 * 36) return plural(Math.round(s / 3600), "hour") + " ago";
+  if (s < 86400 * 8) return plural(Math.round(s / 86400), "day") + " ago";
+  return longDate(iso);
+}
+
+/** "in 12 minutes", "in 3 hours", "in 5 days", "on September 3" */
+function until(iso: string | null): string {
+  if (!iso) return "at an unknown time";
+  const s = (Date.parse(iso) - Date.now()) / 1000;
+  if (s <= 0) return "now";
+  if (s < 60 * 90) return "in " + plural(Math.max(1, Math.round(s / 60)), "minute");
+  if (s < 3600 * 36) return "in " + plural(Math.round(s / 3600), "hour");
+  if (s < 86400 * 8) return "in " + plural(Math.round(s / 86400), "day");
+  return "on " + longDate(iso);
+}
+
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+const longDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 const fmt = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));

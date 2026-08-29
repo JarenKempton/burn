@@ -27,7 +27,8 @@ Usage:
   burn providers list          List providers and detection status
   burn providers add [name]    Connect a provider (interactive without name)
   burn providers test [name]   Run one collection for a provider and show results
-  burn config                  Show config, paths, and the admin token
+  burn admin create            Create a browser admin account (username/password)
+  burn config                  Show config, paths, and the API token
   burn update                  Self-update the compiled binary from GitHub releases
   burn uninstall               Remove services; keeps data unless --purge
 
@@ -45,8 +46,20 @@ async function main(): Promise<void> {
         const handle = startServer();
         console.log(`burn server listening on http://${cfg.server?.host ?? "127.0.0.1"}:${handle.port}`);
         console.log(`  server id:   ${handle.serverId}`);
-        console.log(`  admin token: run \`burn config\` to display`);
+        console.log(`  api token:   run \`burn config\` to display`);
         console.log(`  tailscale:   tailscale serve --bg ${handle.port}   (recommended transport)`);
+
+        {
+          const { hasUsers } = await import("./server/auth");
+          if (!hasUsers(handle.db)) {
+            if (process.stdin.isTTY) {
+              const { createAdminInteractive } = await import("./cli/admin");
+              await createAdminInteractive(handle.db);
+            } else {
+              console.log("  ⚠ no admin account yet — approvals need one: burn admin create");
+            }
+          }
+        }
 
         // Combined role (issue #7): the server machine collects too, without
         // enrolling to itself through the browser. Opt out with --server-only.
@@ -101,6 +114,10 @@ async function main(): Promise<void> {
       return cmdProviders(sub, rest);
     case "config":
       return cmdConfig();
+    case "admin": {
+      const { cmdAdmin } = await import("./cli/admin");
+      return cmdAdmin(sub);
+    }
     case "uninstall":
       return cmdUninstall(rest.includes("--purge"));
     case "update": {

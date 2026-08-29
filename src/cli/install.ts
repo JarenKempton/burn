@@ -28,9 +28,29 @@ export async function cmdServiceInstall(role: "server" | "collector"): Promise<v
       ? "Burn usage observability server (collects on this machine too)"
       : "Burn usage observability collector";
 
-  if (role === "collector" && !existsSync(join(configDir(), "credentials.json"))) {
-    console.log("Tip: run `burn collector run` once first to enroll this machine —");
-    console.log("the service can't answer the enrollment prompts.\n");
+  if (role === "collector") {
+    // Enroll right here if needed — the service can't answer prompts.
+    const { ensureEnrolled } = await import("../collector/run");
+    if (process.stdin.isTTY) {
+      await ensureEnrolled();
+    } else if (!existsSync(join(configDir(), "credentials.json"))) {
+      console.error("This machine isn't enrolled and there's no terminal to ask questions in.");
+      console.error("Run `burn collector run` interactively once, then re-run the install.");
+      process.exit(1);
+    }
+  }
+
+  if (role === "server" && process.stdin.isTTY) {
+    // First-time server setup: create the browser admin account now, while
+    // there's a human at the terminal.
+    const { openServerDb } = await import("../server/db");
+    const { hasUsers } = await import("../server/auth");
+    const db = openServerDb();
+    if (!hasUsers(db)) {
+      const { createAdminInteractive } = await import("./admin");
+      await createAdminInteractive(db);
+    }
+    db.close();
   }
 
   if (process.platform === "linux") {
