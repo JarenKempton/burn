@@ -38,9 +38,15 @@ export async function cmdStatus(): Promise<void> {
       get("/v1/adapters/health"),
     ]);
 
-    console.log("\nNodes:");
+    const nodeName = new Map<string, string>(nodes.nodes.map((n: any) => [n.node_id, n.name]));
+
+    console.log("\nMachines:");
     for (const n of nodes.nodes) {
-      console.log(`  ${icon(n.liveness)} ${n.name} (${n.platform}) — ${n.liveness}, last heartbeat ${n.last_heartbeat_received_at ?? "never"}`);
+      const self = n.node_id === creds.node.node_id ? ", this machine" : "";
+      const hint = n.liveness === "offline" ? " — is `burn collector run` (or the server) running there?" : "";
+      console.log(
+        `  ${icon(n.liveness)} ${n.name} (${n.platform}${self}) — ${n.liveness}, last heartbeat ${n.last_heartbeat_received_at ?? "never"}${hint}`
+      );
     }
 
     if (usage.latest_quota_snapshots.length > 0) {
@@ -48,7 +54,8 @@ export async function cmdStatus(): Promise<void> {
       for (const q of usage.latest_quota_snapshots) {
         const pct = q.used_percent != null ? `${Math.round(q.used_percent)}% used` : "usage unknown";
         const resets = q.resets_at ? `, resets ${q.resets_at}` : "";
-        console.log(`  ${q.provider_id} [${q.window?.label ?? q.window?.kind}] ${pct}${resets}`);
+        const where = nodeName.get(q.node_id) ?? q.node_id.slice(0, 8);
+        console.log(`  ${q.provider_id} @ ${where} [${q.window?.label ?? q.window?.kind}] ${pct}${resets}`);
       }
     }
 

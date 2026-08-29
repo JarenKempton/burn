@@ -18,11 +18,21 @@ import type { ObservationEnvelope } from "../shared/types";
 
 const COLLECTOR_VERSION = "0.1.0";
 
-export async function runCollector(opts?: { once?: boolean }): Promise<void> {
-  const creds = loadCredentials();
+export async function runCollector(opts?: { once?: boolean; banner?: boolean }): Promise<void> {
+  let creds = loadCredentials();
   if (!creds.node) {
-    console.error("This node is not enrolled. Run: burn enroll [server-url]");
-    process.exit(1);
+    // Bake enrollment in: ask for the server and enroll right here instead
+    // of bouncing the user to a separate command.
+    console.log("This machine isn't connected to a Burn server yet.");
+    const url = (globalThis.prompt("Server URL (e.g. https://yourserver.ts.net):") ?? "").trim();
+    if (!url) {
+      console.error("No server URL given. Set up later with: burn enroll <server-url>");
+      process.exit(1);
+    }
+    const { enroll } = await import("./enroll");
+    await enroll(url);
+    creds = loadCredentials();
+    if (!creds.node) process.exit(1);
   }
   const cfg = loadConfig();
   const client = new BurnClient(cfg.collector?.server_url ?? creds.node.server_url, creds.node.node_token);
@@ -102,7 +112,7 @@ export async function runCollector(opts?: { once?: boolean }): Promise<void> {
     await flush();
   };
 
-  if (!opts?.once) {
+  if (!opts?.once && opts?.banner !== false) {
     console.log(
       `burn collector running (node ${nodeId} → ${client.baseUrl}); heartbeat ${heartbeatSeconds}s, collect ${collectSeconds}s`
     );

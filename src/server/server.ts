@@ -59,6 +59,28 @@ export interface ServerHandle {
   port: number;
   adminToken: string;
   serverId: string;
+  db: Database;
+}
+
+/**
+ * Combined mode: enroll the server's own machine as a node without the
+ * browser device-authorization dance — the server trusts itself. Returns the
+ * node credential to store locally; no-op guidance is the caller's job when
+ * an enrollment already exists.
+ */
+export function enrollLocalNode(
+  db: Database,
+  name: string,
+  platform: string
+): { node_id: string; node_token: string } {
+  const nodeId = newId();
+  const nodeToken = newToken(32);
+  const now = nowIso();
+  db.run(
+    "INSERT INTO nodes (node_id, name, platform, collector_version, token_hash, created_at, approved_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [nodeId, name, platform, null, sha256Hex(nodeToken), now, now]
+  );
+  return { node_id: nodeId, node_token: nodeToken };
 }
 
 type Env = { Variables: { node: NodeRow } };
@@ -429,6 +451,7 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
     port: server.port!,
     adminToken,
     serverId: serverId!,
+    db,
   };
 }
 
