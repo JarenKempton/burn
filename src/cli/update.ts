@@ -41,12 +41,19 @@ export async function cmdUpdate(currentVersion: string): Promise<void> {
   console.log(`Updating v${currentVersion} → v${latest} ...`);
   const download = await fetch(asset.browser_download_url, { signal: AbortSignal.timeout(120_000) });
   if (!download.ok) throw new Error(`download failed: HTTP ${download.status}`);
+  // Buffer explicitly: Bun.write(path, response) hangs forever on these
+  // large redirected release streams (observed in compiled binaries, where
+  // the eventual abort then exits silently with code 0).
+  const bytes = await download.arrayBuffer();
+  if (bytes.byteLength < 1_000_000)
+    throw new Error(`download looks truncated (${bytes.byteLength} bytes)`);
+  console.log(`Downloaded ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB.`);
 
   // Write beside the current binary, then rename over it — works even while
   // this very process is running (ETXTBSY only bites in-place writes).
   const target = process.execPath;
   const staging = join(dirname(target), `.burn-update-${process.pid}`);
-  await Bun.write(staging, download);
+  await Bun.write(staging, bytes);
   chmodSync(staging, 0o755);
   renameSync(staging, target);
   console.log(`✓ Updated to v${latest}. Restart any running burn server/collector to use it.`);
