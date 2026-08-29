@@ -57,11 +57,24 @@ export const claudeCodeAdapter: Adapter = {
   },
 };
 
+/** Account identity for cross-machine quota dedup; see codex.ts rationale. */
+let cachedAccountRef: string | null | undefined;
+function claudeAccountRef(): string | null {
+  if (cachedAccountRef !== undefined) return cachedAccountRef;
+  cachedAccountRef = null;
+  try {
+    const j = JSON.parse(readFileSync(join(homedir(), ".claude", ".claude.json"), "utf8"));
+    cachedAccountRef = (j?.oauthAccount?.emailAddress ?? null) as string | null;
+  } catch {}
+  return cachedAccountRef;
+}
+
 function envelope(ctx: AdapterContext, payload: ObservationEnvelope["payload"], observedAt: string, sourceQuality: ObservationEnvelope["source_quality"]): ObservationEnvelope {
   return {
     schema_version: 1,
     observation_id: newId(),
     node_id: ctx.nodeId,
+    account_ref: claudeAccountRef(),
     provider_id: "claude_code",
     observed_at: observedAt,
     collected_at: nowIso(),

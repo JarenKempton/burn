@@ -49,13 +49,28 @@ export async function cmdStatus(): Promise<void> {
       );
     }
 
-    if (usage.latest_quota_snapshots.length > 0) {
+    // Quota windows are account-level (a subscription is shared by every
+    // machine on that account); the server returns one snapshot per
+    // provider+account+window. Rows with nothing measurable are hidden.
+    const quotaRows = usage.latest_quota_snapshots.filter(
+      (q: any) => q.used_percent != null || q.used != null || q.remaining != null
+    );
+    if (quotaRows.length > 0) {
       console.log("\nQuota windows:");
-      for (const q of usage.latest_quota_snapshots) {
-        const pct = q.used_percent != null ? `${Math.round(q.used_percent)}% used` : "usage unknown";
-        const resets = q.resets_at ? `, resets ${until(q.resets_at)}` : "";
+      for (const q of quotaRows) {
         const where = nodeName.get(q.node_id) ?? q.node_id.slice(0, 8);
-        console.log(`  ${q.provider_id} @ ${where} [${q.window?.label ?? q.window?.kind}] ${pct}${resets}`);
+        const label = `${q.provider_id} ${q.window?.label ?? q.window?.kind}`.padEnd(16);
+        const via = q.account_ref
+          ? `${q.account_ref} · via ${where} ${ago(q.observed_at)}`
+          : `on ${where} · ${ago(q.observed_at)}`;
+        if (q.used_percent != null) {
+          const pct = `${Math.round(q.used_percent)}%`.padStart(4);
+          const resets = q.resets_at ? `resets ${until(q.resets_at)}` : "";
+          console.log(`  ${label} ${bar(q.used_percent)} ${pct}  ${resets.padEnd(19)} ${via}`);
+        } else {
+          const rem = q.remaining != null ? `${q.remaining} ${q.unit ?? ""} remaining` : `${q.used} ${q.unit ?? ""} used`;
+          console.log(`  ${label} ${rem}  (${via})`);
+        }
       }
     }
 
@@ -67,20 +82,32 @@ export async function cmdStatus(): Promise<void> {
       }
     }
 
-    const byProvider = new Map<string, { input: number; output: number; requests: number }>();
+    // Consumption is per-machine work: break it down by provider × machine.
+    const byProviderNode = new Map<string, { provider: string; node: string; input: number; output: number; requests: number; cost: number }>();
     for (const row of usage.consumption_by_day) {
-      const agg = byProvider.get(row.provider_id) ?? { input: 0, output: 0, requests: 0 };
+      const key = `${row.provider_id}|${row.node_id}`;
+      const agg =
+        byProviderNode.get(key) ??
+        { provider: row.provider_id, node: nodeName.get(row.node_id) ?? row.node_id.slice(0, 8), input: 0, output: 0, requests: 0, cost: 0 };
       agg.input += row.input_tokens ?? 0;
       agg.output += row.output_tokens ?? 0;
       agg.requests += row.requests ?? 0;
-      byProvider.set(row.provider_id, agg);
+      agg.cost += row.cost_micros ?? 0;
+      byProviderNode.set(key, agg);
     }
-    if (byProvider.size > 0) {
-      console.log(`\nConsumption since ${usage.since.slice(0, 10)}:`);
-      for (const [provider, agg] of byProvider) {
+    if (byProviderNode.size > 0) {
+      const days = Math.round((Date.now() - Date.parse(usage.since)) / 86400_000);
+      console.log(`\nConsumption (last ${days} days):`);
+      const rows = [...byProviderNode.values()].sort(
+        (a, b) => a.provider.localeCompare(b.provider) || b.input - a.input
+      );
+      let lastProvider = "";
+      for (const r of rows) {
+        const provider = r.provider === lastProvider ? "" : r.provider;
+        lastProvider = r.provider;
+        const cost = r.cost > 0 ? `  $${(r.cost / 1_000_000).toFixed(2)}` : "";
         console.log(
-          `  ${provider}: ${fmt(agg.input)} in / ${fmt(agg.output)} out tokens` +
-            (agg.requests ? ` across ${fmt(agg.requests)} requests` : "")
+          `  ${provider.padEnd(13)}${r.node.padEnd(16)} ${fmt(r.input).padStart(7)} in / ${fmt(r.output).padStart(7)} out   ${fmt(r.requests).padStart(6)} req${cost}`
         );
       }
     }
@@ -97,6 +124,16 @@ export async function cmdStatus(): Promise<void> {
 }
 
 const icon = (liveness: string) => (liveness === "online" ? "●" : liveness === "stale" ? "◐" : "○");
+
+/** usage bar, colored by pressure when the terminal supports it */
+function bar(pct: number, width = 20): string {
+  const clamped = Math.min(100, Math.max(0, pct));
+  const filled = Math.round((clamped / 100) * width);
+  const s = "█".repeat(filled) + "░".repeat(width - filled);
+  if (!process.stdout.isTTY) return s;
+  const color = clamped >= 90 ? "\x1b[31m" : clamped >= 70 ? "\x1b[33m" : "\x1b[32m";
+  return `${color}${s}\x1b[0m`;
+}
 
 /** "just now", "5 minutes ago", "3 hours ago", "2 days ago", "July 23, 2026" */
 function ago(iso: string | null): string {
@@ -123,4 +160,11 @@ function until(iso: string | null): string {
 const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
 const longDate = (iso: string) =>
   new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-const fmt = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const fmt = (n: number) =>
+  n >= 1_000_000_000
+    ? `${(n / 1_000_000_000).toFixed(1)}B`
+    : n >= 1_000_000
+      ? `${(n / 1_000_000).toFixed(1)}M`
+      : n >= 1000
+        ? `${(n / 1000).toFixed(1)}k`
+        : String(n);

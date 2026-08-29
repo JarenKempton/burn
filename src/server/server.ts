@@ -496,12 +496,14 @@ function validateObservation(obs: ObservationEnvelope): string | null {
 
 function usageSummary(db: Database, sinceParam?: string) {
   const since = sinceParam ?? new Date(Date.now() - 30 * 86400_000).toISOString();
+  // Consumption is per-machine work: keep the node dimension.
   const consumption = db
     .query<
-      { provider_id: string; day: string; model: string | null; input_tokens: number | null; cached: number | null; output_tokens: number | null; reasoning: number | null; requests: number | null; cost_micros: number | null },
+      { provider_id: string; node_id: string; day: string; model: string | null; input_tokens: number | null; cached: number | null; output_tokens: number | null; reasoning: number | null; requests: number | null; cost_micros: number | null },
       [string]
     >(
       `SELECT provider_id,
+              node_id,
               substr(observed_at, 1, 10) AS day,
               json_extract(payload_json, '$.model') AS model,
               SUM(json_extract(payload_json, '$.input_tokens')) AS input_tokens,
@@ -512,20 +514,27 @@ function usageSummary(db: Database, sinceParam?: string) {
               SUM(json_extract(payload_json, '$.cost_micros')) AS cost_micros
        FROM observations
        WHERE payload_type = 'consumption' AND observed_at >= ?
-       GROUP BY provider_id, day, model
+       GROUP BY provider_id, node_id, day, model
        ORDER BY day DESC`
     )
     .all(since);
 
+  // Quota is account-level: a subscription window is shared by every machine
+  // on that account, so keep only the newest snapshot per provider+account+
+  // window. Snapshots without an account_ref can't be proven shared and fall
+  // back to per-node. observation_id breaks observed_at ties (no dup rows).
   const quotas = db
-    .query<{ node_id: string; provider_id: string; payload_json: string; observed_at: string }, []>(
-      `SELECT o.node_id, o.provider_id, o.payload_json, o.observed_at
-       FROM observations o
-       JOIN (SELECT node_id, provider_id, json_extract(payload_json, '$.window.label') AS lbl, MAX(observed_at) AS m
-             FROM observations WHERE payload_type = 'quota_snapshot'
-             GROUP BY node_id, provider_id, lbl) latest
-       ON o.node_id = latest.node_id AND o.provider_id = latest.provider_id AND o.observed_at = latest.m
-       WHERE o.payload_type = 'quota_snapshot'`
+    .query<{ node_id: string; account_ref: string | null; provider_id: string; payload_json: string; observed_at: string }, []>(
+      `SELECT node_id, account_ref, provider_id, payload_json, observed_at FROM (
+         SELECT o.*,
+                ROW_NUMBER() OVER (
+                  PARTITION BY provider_id,
+                               COALESCE(account_ref, node_id),
+                               json_extract(payload_json, '$.window.label')
+                  ORDER BY observed_at DESC, observation_id DESC
+                ) AS rn
+         FROM observations o WHERE payload_type = 'quota_snapshot'
+       ) WHERE rn = 1`
     )
     .all();
 
@@ -545,6 +554,7 @@ function usageSummary(db: Database, sinceParam?: string) {
     consumption_by_day: consumption,
     latest_quota_snapshots: quotas.map((q) => ({
       node_id: q.node_id,
+      account_ref: q.account_ref,
       provider_id: q.provider_id,
       observed_at: q.observed_at,
       ...JSON.parse(q.payload_json),

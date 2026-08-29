@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { Glob } from "bun";
 import type { Adapter, AdapterContext } from "./types";
 import type { ConsumptionPayload, ObservationEnvelope, QuotaSnapshotPayload } from "../shared/types";
@@ -42,6 +42,27 @@ interface TokenCountLine {
     info?: { total_token_usage?: TokenUsage; last_token_usage?: TokenUsage; model?: string } | null;
     rate_limits?: { primary?: RateWindow | null; secondary?: RateWindow | null } | null;
   };
+}
+
+/** Account identity for quota dedup across machines: the same subscription
+ * window is shared by every machine logged into the same account. Read-only
+ * peek at auth.json's id_token claims; never touches token values beyond
+ * decoding the (non-secret) JWT payload locally. */
+let cachedAccountRef: string | null | undefined;
+function codexAccountRef(): string | null {
+  if (cachedAccountRef !== undefined) return cachedAccountRef;
+  cachedAccountRef = null;
+  try {
+    const auth = JSON.parse(readFileSync(join(homedir(), ".codex", "auth.json"), "utf8"));
+    const idToken: string | undefined = auth?.tokens?.id_token;
+    if (typeof idToken === "string") {
+      const payload = JSON.parse(Buffer.from(idToken.split(".")[1] ?? "", "base64url").toString("utf8"));
+      cachedAccountRef = (payload?.email ?? payload?.preferred_username ?? payload?.sub ?? null) as string | null;
+    }
+  } catch {
+    // stays null: quota dedup falls back to per-node
+  }
+  return cachedAccountRef;
 }
 
 export const codexAdapter: Adapter = {
@@ -123,6 +144,7 @@ function envelope(ctx: AdapterContext, payload: ObservationEnvelope["payload"], 
     schema_version: 1,
     observation_id: newId(),
     node_id: ctx.nodeId,
+    account_ref: codexAccountRef(),
     provider_id: "codex",
     observed_at: observedAt,
     collected_at: nowIso(),
