@@ -5,25 +5,45 @@ import { stateDir, configDir } from "../shared/paths";
 
 // Service installation for the primary targets (issue #7): systemd user units
 // on Linux, launchd agents on macOS. Windows is best-effort later.
+//
+// Since `server run` also collects on its own machine (combined mode), the
+// server machine needs exactly one service; collector-only machines install
+// theirs with `burn collector install`.
 
-const UNITS = ["burn-server", "burn-collector"] as const;
+const ALL_UNITS = ["burn-server", "burn-collector"] as const;
+const ALL_PLISTS = ["dev.burn.server", "dev.burn.collector"] as const;
 
-export async function cmdServerInstall(): Promise<void> {
-  const exe = process.execPath; // compiled binary path, or bun when run from source
+function execStart(): string {
+  const exe = process.execPath;
   const isCompiled = !exe.endsWith("/bun");
-  const execStart = isCompiled ? `${exe}` : `${exe} run ${join(process.cwd(), "src/index.ts")}`;
+  return isCompiled ? exe : `${exe} run ${join(process.cwd(), "src/index.ts")}`;
+}
+
+export async function cmdServiceInstall(role: "server" | "collector"): Promise<void> {
+  const unit = role === "server" ? "burn-server" : "burn-collector";
+  const plist = role === "server" ? "dev.burn.server" : "dev.burn.collector";
+  const args = `${role} run`;
+  const description =
+    role === "server"
+      ? "Burn usage observability server (collects on this machine too)"
+      : "Burn usage observability collector";
+
+  if (role === "collector" && !existsSync(join(configDir(), "credentials.json"))) {
+    console.log("Tip: run `burn collector run` once first to enroll this machine —");
+    console.log("the service can't answer the enrollment prompts.\n");
+  }
 
   if (process.platform === "linux") {
     const dir = join(homedir(), ".config", "systemd", "user");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
-      join(dir, "burn-server.service"),
+      join(dir, `${unit}.service`),
       `[Unit]
-Description=Burn usage observability server
+Description=${description}
 After=network.target
 
 [Service]
-ExecStart=${execStart} server run
+ExecStart=${execStart()} ${args}
 Restart=on-failure
 RestartSec=5
 
@@ -31,69 +51,60 @@ RestartSec=5
 WantedBy=default.target
 `
     );
-    writeFileSync(
-      join(dir, "burn-collector.service"),
-      `[Unit]
-Description=Burn usage observability collector
-After=network.target
-
-[Service]
-ExecStart=${execStart} collector run
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-`
-    );
-    console.log("Installed systemd user units: burn-server.service, burn-collector.service");
-    console.log("Enable with:");
-    console.log("  systemctl --user daemon-reload");
-    console.log("  systemctl --user enable --now burn-server   # on the server node");
-    console.log("  systemctl --user enable --now burn-collector    # after `burn enroll`");
-    console.log("Then expose via Tailscale:  tailscale serve --bg 7337");
+    const reload = Bun.spawnSync(["systemctl", "--user", "daemon-reload"]);
+    const enable = Bun.spawnSync(["systemctl", "--user", "enable", "--now", `${unit}.service`]);
+    if (reload.exitCode === 0 && enable.exitCode === 0) {
+      console.log(`✓ ${unit} installed and running (systemd user service).`);
+      console.log(`  logs:   journalctl --user -u ${unit} -f`);
+      console.log(`  stop:   systemctl --user disable --now ${unit}`);
+    } else {
+      console.log(`Wrote ${join(dir, `${unit}.service`)}, but couldn't enable it automatically.`);
+      console.log(`Run:  systemctl --user daemon-reload && systemctl --user enable --now ${unit}`);
+    }
+    if (role === "server") console.log(`  expose: tailscale serve --bg 7337`);
     return;
   }
 
   if (process.platform === "darwin") {
     const dir = join(homedir(), "Library", "LaunchAgents");
     mkdirSync(dir, { recursive: true });
-    for (const [name, args] of [
-      ["dev.burn.server", "server run"],
-      ["dev.burn.collector", "collector run"],
-    ] as const) {
-      const argv = [...execStart.split(" "), ...args.split(" ")];
-      writeFileSync(
-        join(dir, `${name}.plist`),
-        `<?xml version="1.0" encoding="UTF-8"?>
+    const path = join(dir, `${plist}.plist`);
+    const argv = [...execStart().split(" "), role, "run"];
+    writeFileSync(
+      path,
+      `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>Label</key><string>${name}</string>
+  <key>Label</key><string>${plist}</string>
   <key>ProgramArguments</key><array>${argv.map((a) => `<string>${a}</string>`).join("")}</array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
 </dict></plist>
 `
-      );
+    );
+    const load = Bun.spawnSync(["launchctl", "load", path]);
+    if (load.exitCode === 0) {
+      console.log(`✓ ${plist} installed and running (launchd agent).`);
+      console.log(`  stop: launchctl unload ${path}`);
+    } else {
+      console.log(`Wrote ${path}; load it with:  launchctl load ${path}`);
     }
-    console.log("Installed launchd agents: dev.burn.server, dev.burn.collector");
-    console.log("Load with:  launchctl load ~/Library/LaunchAgents/dev.burn.server.plist");
     return;
   }
 
-  console.log(`Service install is not yet supported on ${process.platform}; run \`burn server run\` directly.`);
+  console.log(`Service install is not yet supported on ${process.platform}; run \`burn ${role} run\` directly.`);
 }
 
 export async function cmdUninstall(purge: boolean): Promise<void> {
   if (process.platform === "linux") {
-    for (const unit of UNITS) {
+    for (const unit of ALL_UNITS) {
       Bun.spawnSync(["systemctl", "--user", "disable", "--now", `${unit}.service`]);
       const path = join(homedir(), ".config", "systemd", "user", `${unit}.service`);
       if (existsSync(path)) rmSync(path);
     }
     console.log("Removed systemd user units.");
   } else if (process.platform === "darwin") {
-    for (const name of ["dev.burn.server", "dev.burn.collector"]) {
+    for (const name of ALL_PLISTS) {
       const path = join(homedir(), "Library", "LaunchAgents", `${name}.plist`);
       Bun.spawnSync(["launchctl", "unload", path]);
       if (existsSync(path)) rmSync(path);

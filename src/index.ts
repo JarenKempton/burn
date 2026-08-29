@@ -9,7 +9,7 @@ import { claudeStatuslineTee } from "./providers/claude-code";
 import { cmdStatus } from "./cli/status";
 import { cmdProviders } from "./cli/providers";
 import { cmdConfig } from "./cli/config";
-import { cmdServerInstall, cmdUninstall } from "./cli/install";
+import { cmdServiceInstall, cmdUninstall } from "./cli/install";
 import { DEFAULT_PORT, loadConfig } from "./shared/config";
 
 const VERSION = "0.1.0";
@@ -19,8 +19,9 @@ const HELP = `burn ${VERSION} — local-first AI usage and limits observability
 Usage:
   burn server run              Run the server; also collects on this machine
                                (opt out with --server-only)
-  burn server install          Install the server as a user service (systemd/launchd)
+  burn server install          Install + start the server as a user service
   burn collector run [--once]  Collect + report; offers enrollment if needed
+  burn collector install       Install + start the collector as a user service
   burn enroll [server-url]     Enroll this machine with a Burn server (browser approval)
   burn status                  Show machines, quota, and usage
   burn providers list          List providers and detection status
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
         await new Promise(() => {});
         return;
       }
-      if (sub === "install") return cmdServerInstall();
+      if (sub === "install") return cmdServiceInstall("server");
       break;
     }
     case "enroll": {
@@ -91,6 +92,7 @@ async function main(): Promise<void> {
     }
     case "collector": {
       if (sub === "run") return runCollector({ once: rest.includes("--once") });
+      if (sub === "install") return cmdServiceInstall("collector");
       break;
     }
     case "status":
