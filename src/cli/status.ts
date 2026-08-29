@@ -53,13 +53,13 @@ export async function cmdStatus(): Promise<void> {
     // machine on that account); the server returns one snapshot per
     // provider+account+window. Rows with nothing measurable are hidden.
     const quotaRows = usage.latest_quota_snapshots.filter(
-      (q: any) => q.used_percent != null || q.used != null || q.remaining != null
+      (q: any) => q.used_percent != null || (q.used != null && q.used !== 0) || q.remaining != null
     );
     if (quotaRows.length > 0) {
       console.log("\nQuota windows:");
       for (const q of quotaRows) {
         const where = nodeName.get(q.node_id) ?? q.node_id.slice(0, 8);
-        const label = `${q.provider_id} ${q.window?.label ?? q.window?.kind}`.padEnd(16);
+        const label = `${q.provider_id} ${q.window?.label ?? q.window?.kind}`.padEnd(22);
         const via = q.account_ref
           ? `${q.account_ref} · via ${where} ${ago(q.observed_at)}`
           : `on ${where} · ${ago(q.observed_at)}`;
@@ -98,17 +98,26 @@ export async function cmdStatus(): Promise<void> {
     if (byProviderNode.size > 0) {
       const days = Math.round((Date.now() - Date.parse(usage.since)) / 86400_000);
       console.log(`\nConsumption (last ${days} days):`);
-      const rows = [...byProviderNode.values()].sort(
-        (a, b) => a.provider.localeCompare(b.provider) || b.input - a.input
-      );
-      let lastProvider = "";
-      for (const r of rows) {
-        const provider = r.provider === lastProvider ? "" : r.provider;
-        lastProvider = r.provider;
-        const cost = r.cost > 0 ? `  $${(r.cost / 1_000_000).toFixed(2)}` : "";
+      const byProvider = new Map<string, { rows: { node: string; input: number; output: number; requests: number; cost: number }[]; input: number; output: number; requests: number; cost: number }>();
+      for (const r of byProviderNode.values()) {
+        const p = byProvider.get(r.provider) ?? { rows: [], input: 0, output: 0, requests: 0, cost: 0 };
+        p.rows.push(r);
+        p.input += r.input;
+        p.output += r.output;
+        p.requests += r.requests;
+        p.cost += r.cost;
+        byProvider.set(r.provider, p);
+      }
+      const line = (label: string, v: { input: number; output: number; requests: number; cost: number }, indent = "") => {
+        const cost = v.cost > 0 ? ` · $${(v.cost / 1_000_000).toFixed(2)}` : "";
         console.log(
-          `  ${provider.padEnd(13)}${r.node.padEnd(16)} ${fmt(r.input).padStart(7)} in / ${fmt(r.output).padStart(7)} out   ${fmt(r.requests).padStart(6)} req${cost}`
+          `  ${indent}${label.padEnd(16 - indent.length)}${fmt(v.input).padStart(8)} in · ${fmt(v.output).padStart(7)} out · ${fmt(v.requests).padStart(6)} req${cost}`
         );
+      };
+      for (const [provider, p] of [...byProvider].sort((a, b) => b[1].input - a[1].input)) {
+        line(provider, p);
+        if (p.rows.length > 1)
+          for (const r of p.rows.sort((a, b) => b.input - a.input)) line(r.node, r, "  ");
       }
     }
 

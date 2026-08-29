@@ -584,16 +584,36 @@ function usageSummary(db: Database, sinceParam?: string) {
     )
     .all();
 
+  // Suppress stale account-less snapshots: rows without account_ref exist
+  // per-node (pre-upgrade collectors, or providers that can't identify the
+  // account). Within a provider+window, an account-tagged row supersedes any
+  // older account-less row, and account-less rows collapse to the newest one
+  // — three machines on one subscription must not show three stale windows.
+  const parsed = quotas.map((q) => ({
+    node_id: q.node_id,
+    account_ref: q.account_ref,
+    provider_id: q.provider_id,
+    observed_at: q.observed_at,
+    ...JSON.parse(q.payload_json),
+  }));
+  const cleanedQuotas: typeof parsed = [];
+  const groups = new Map<string, typeof parsed>();
+  for (const q of parsed) {
+    const key = `${q.provider_id}|${q.window?.label ?? ""}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(q);
+  }
+  for (const rows of groups.values()) {
+    const withAccount = rows.filter((r) => r.account_ref != null);
+    cleanedQuotas.push(...withAccount);
+    const anonymous = rows.filter((r) => r.account_ref == null).sort((a, b) => b.observed_at.localeCompare(a.observed_at));
+    const newestAccountTime = withAccount.reduce((m, r) => (r.observed_at > m ? r.observed_at : m), "");
+    if (anonymous[0] && anonymous[0].observed_at > newestAccountTime) cleanedQuotas.push(anonymous[0]);
+  }
+
   return {
     since,
     consumption_by_day: consumption,
-    latest_quota_snapshots: quotas.map((q) => ({
-      node_id: q.node_id,
-      account_ref: q.account_ref,
-      provider_id: q.provider_id,
-      observed_at: q.observed_at,
-      ...JSON.parse(q.payload_json),
-    })),
+    latest_quota_snapshots: cleanedQuotas,
     latest_credit_balances: credits.map((c) => ({
       provider_id: c.provider_id,
       observed_at: c.observed_at,

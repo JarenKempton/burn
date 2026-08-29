@@ -72,7 +72,10 @@ WantedBy=default.target
 `
     );
     const reload = Bun.spawnSync(["systemctl", "--user", "daemon-reload"]);
-    const enable = Bun.spawnSync(["systemctl", "--user", "enable", "--now", `${unit}.service`]);
+    Bun.spawnSync(["systemctl", "--user", "enable", `${unit}.service`]);
+    // restart, not enable --now: an already-running service must pick up the
+    // current binary and credentials (post-update / post-re-enrollment)
+    const enable = Bun.spawnSync(["systemctl", "--user", "restart", `${unit}.service`]);
     if (reload.exitCode === 0 && enable.exitCode === 0) {
       console.log(`✓ ${unit} installed and running (systemd user service).`);
       console.log(`  logs:   journalctl --user -u ${unit} -f`);
@@ -102,6 +105,9 @@ WantedBy=default.target
 </dict></plist>
 `
     );
+    // unload first (ignore failure if not loaded): a running agent must pick
+    // up the current binary and credentials, and `load` alone won't restart it
+    Bun.spawnSync(["launchctl", "unload", path]);
     const load = Bun.spawnSync(["launchctl", "load", path]);
     if (load.exitCode === 0) {
       console.log(`✓ ${plist} installed and running (launchd agent).`);
