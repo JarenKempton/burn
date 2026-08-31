@@ -178,6 +178,9 @@ export function startServer(opts?: { port?: number; host?: string; dbPath?: stri
     }
     const qs = c.req.query("admin_token");
     if (qs && timingSafeEqualStr(qs, adminToken)) return next();
+    // WWW-Authenticate makes browsers show a native login prompt, so the
+    // read API is usable from any browser with the admin account.
+    c.header("WWW-Authenticate", 'Basic realm="burn"');
     return c.json(apiError("unauthorized", "Admin credentials required (Bearer token or Basic auth)"), 401);
   }
 
