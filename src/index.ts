@@ -12,6 +12,7 @@ import { cmdConfig } from "./cli/config";
 import { cmdServiceInstall, cmdUninstall } from "./cli/install";
 import { DEFAULT_PORT, loadConfig } from "./shared/config";
 import { VERSION } from "./shared/version";
+import { backupServer, restoreServer, reidentifyCollector, retargetCollector } from "./cli/migrate";
 
 
 
@@ -21,8 +22,12 @@ Usage:
   burn server run              Run the server; also collects on this machine
                                (opt out with --server-only)
   burn server install          Install + start the server as a user service
+  burn server backup <dir>     Create a consistent migration backup
+  burn server restore <dir>    Restore a migration backup (use --replace if needed)
   burn collector run [--once]  Collect + report; offers enrollment if needed
   burn collector install       Install + start the collector as a user service
+  burn collector reidentify    Repair a machine cloned from another collector
+  burn collector retarget URL  Keep this node identity but use a moved server
   burn enroll [server-url]     Enroll this machine with a Burn server (browser approval)
   burn status                  Show machines, quota, and usage
   burn usage [--days N]        Token usage and cost by provider × model
@@ -86,6 +91,8 @@ async function main(): Promise<void> {
         return;
       }
       if (sub === "install") return cmdServiceInstall("server");
+      if (sub === "backup" && rest[0]) return backupServer(rest[0]);
+      if (sub === "restore" && rest[0]) return restoreServer(rest[0], rest.includes("--replace"));
       break;
     }
     case "enroll": {
@@ -98,6 +105,8 @@ async function main(): Promise<void> {
     case "collector": {
       if (sub === "run") return runCollector({ once: rest.includes("--once") });
       if (sub === "install") return cmdServiceInstall("collector");
+      if (sub === "reidentify") return reidentifyCollector();
+      if (sub === "retarget" && rest[0]) return retargetCollector(rest[0]);
       if (sub === "enroll") return rest[0] ? enroll(rest[0]) : enrollDefault(); // common guess; alias for burn enroll
       break;
     }

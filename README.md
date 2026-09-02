@@ -51,6 +51,38 @@ For Claude Code 5-hour/weekly quota windows, run
 Code statusline (the officially documented surface that carries rate-limit
 data).
 
+## Moving a server or repairing a cloned machine
+
+Move the authoritative server database without overwriting the destination
+machine's collector identity or provider credentials:
+
+```sh
+# old server (stop its service first for the final cutover snapshot)
+systemctl --user disable --now burn-server
+burn server backup ~/burn-migration
+
+# copy ~/burn-migration to the new machine, stop Burn there, then:
+systemctl --user disable --now burn-server burn-collector
+burn server restore ~/burn-migration --replace
+burn server install
+```
+
+If a machine was cloned from another collector, give it its own Burn identity
+before starting it. This preserves provider settings and collection cursors,
+but removes the copied node credential and pending observations:
+
+```sh
+burn collector reidentify
+```
+
+After a server move, existing collectors should retain their node identity and
+history. Point them at the restored server with:
+
+```sh
+burn collector retarget https://new-server.example.ts.net
+burn collector install
+```
+
 ## Documentation
 
 - `docs/spec.md` — CLI/HTTP/SQLite contracts, auth and redaction invariants.
